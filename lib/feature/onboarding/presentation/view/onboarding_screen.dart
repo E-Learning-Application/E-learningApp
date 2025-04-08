@@ -67,7 +67,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             left: 0,
             right: 0,
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -78,40 +78,46 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       style: TextStyle(
                         color: Colors.black87,
                         fontSize: 16,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
-
                   Row(
                     children: List.generate(
                       _pages.length,
                       (index) => Container(
                         margin: EdgeInsets.symmetric(horizontal: 4),
-                        width: 10,
-                        height: 10,
+                        width: 8,
+                        height: 8,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: _currentPage == index
-                              ? Colors.indigo
+                              ? Color(0xFF1A237E)
                               : Colors.grey.shade300,
                         ),
                       ),
                     ),
                   ),
-
                   _currentPage == _pages.length - 1
                       ? ElevatedButton(
                           onPressed: () {},
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.indigo,
+                            backgroundColor: Color(0xFF1A237E),
                             padding: EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 10,
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
                             ),
                           ),
                           child: Text(
                             'Let\'s Start!',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         )
                       : TextButton(
@@ -126,6 +132,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             style: TextStyle(
                               color: Colors.black87,
                               fontSize: 16,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
