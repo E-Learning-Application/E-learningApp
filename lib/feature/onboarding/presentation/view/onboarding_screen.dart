@@ -1,4 +1,4 @@
-import 'package:e_learning_app/feature/data/onboarding_data.dart';
+import 'package:e_learning_app/feature/onboarding/data/onboarding_data.dart';
 import 'package:e_learning_app/feature/onboarding/presentation/view/onboarding_page.dart';
 import 'package:flutter/material.dart';
 
