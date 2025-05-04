@@ -1,12 +1,13 @@
+import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
 import 'feature/onboarding/presentation/view/onboarding_screen.dart';
 
 void main() {
-  runApp(MyApp());
+  runApp(LanguageLearningApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class LanguageLearningApp extends StatelessWidget {
+  const LanguageLearningApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +18,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         fontFamily: 'Roboto',
       ),
-      home: OnboardingScreen(),
+      home: SplashView(),
     );
   }
 }

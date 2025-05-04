@@ -38,6 +38,7 @@ class _SplashViewBodyState extends State<SplashViewBody>
             Navigator.pushReplacement(
               context,
               PageRouteBuilder(
+                
                 pageBuilder: (_, animation, __) => state.navigateTo!,
                 transitionsBuilder: (_, animation, __, child) {
                   return FadeTransition(

@@ -1,3 +1,5 @@
+import 'package:e_learning_app/feature/Auth/login/presentation/views/login_view.dart';
+import 'package:e_learning_app/feature/onboarding/presentation/view/onboarding_screen.dart';
 import 'package:e_learning_app/feature/splash/data/splash_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -60,16 +62,17 @@ class SplashCubit extends Cubit<SplashState> {
 
     //   final isAuthenticated = await _authService.isUserAuthenticated();
 
-    //   Widget destination;
+    Widget destination;
+
     //   if (isAuthenticated) {
     //     destination = const MainScreen();
-    //   } else if (seenOnboarding) {
-    //     destination = const SignInView();
-    //   } else {
-    //     destination = const OnboardingView();
-    //   }
+    // if (seenOnboarding) {
+    //   destination = const LoginView();
+    // } else {
+    destination = const OnboardingView();
+    // }
 
-    //   emit(state.copyWith(navigateTo: destination));
+    emit(state.copyWith(navigateTo: destination));
     // } catch (e) {
     //   emit(state.copyWith(navigateTo: const OnboardingView()));
     // }
