@@ -1,4 +1,4 @@
-import 'package:e_learning_app/feature/Auth/Register/presentation/view/register_view.dart';
+import 'package:e_learning_app/feature/auth/Register/presentation/view/register_view.dart';
 import 'package:flutter/material.dart';
 
 class LoginView extends StatefulWidget {

@@ -1,6 +1,5 @@
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
-import 'feature/onboarding/presentation/view/onboarding_screen.dart';
 
 void main() {
   runApp(LanguageLearningApp());

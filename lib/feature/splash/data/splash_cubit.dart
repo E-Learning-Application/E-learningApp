@@ -1,4 +1,4 @@
-import 'package:e_learning_app/feature/Auth/login/presentation/views/login_view.dart';
+import 'package:e_learning_app/feature/auth/login/presentation/views/login_view.dart';
 import 'package:e_learning_app/feature/onboarding/presentation/view/onboarding_screen.dart';
 import 'package:e_learning_app/feature/splash/data/splash_state.dart';
 import 'package:flutter/material.dart';
