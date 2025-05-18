@@ -38,17 +38,17 @@ class OnboardingViewBody extends StatelessWidget {
                       OnboardingPage(
                         title: "Stay Connected\nAnytime, Anywhere",
                         description: "Seamless video calls, clear voice chats, and instant messaging—all in one app. Stay close to friends, family, and colleagues effortlessly!",
-                        imagePath: "assets/images/onboarding_1.png",
+                        imagePath: "assets/images/onboarding1.png",
                       ),
                       OnboardingPage(
                         title: "Talk & See with Ease",
                         description: "High-quality video and voice calls for smooth, reliable communication. Connect face-to-face or with just your voice—whenever you need!",
-                        imagePath: "assets/images/onboarding_2.png",
+                        imagePath: "assets/images/onboarding2.png",
                       ),
                       OnboardingPage(
                         title: "Chat Smarter & Faster",
                         description: "Instant messaging with multimedia sharing and smart notifications. Simple, secure, and built to keep you engaged!",
-                        imagePath: "assets/images/onboarding_3.png",
+                        imagePath: "assets/images/onboarding3.png",
                       ),
                     ],
                   ),

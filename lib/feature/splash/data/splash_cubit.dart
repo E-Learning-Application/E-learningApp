@@ -54,7 +54,7 @@ class SplashCubit extends Cubit<SplashState> {
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    await Future.delayed(const Duration(milliseconds: 2500));
+    await Future.delayed(const Duration(milliseconds: 5000));
 
     // try {
     //   final seenOnboarding =

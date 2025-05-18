@@ -29,9 +29,10 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -39,8 +40,9 @@ class _RegisterPageState extends State<RegisterPage> {
               const Text(
                 "Let's sign you up",
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
               ),
               const SizedBox(height: 20),
@@ -49,6 +51,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
@@ -56,9 +59,16 @@ class _RegisterPageState extends State<RegisterPage> {
                 controller: _nameController,
                 decoration: InputDecoration(
                   hintText: 'Enter your name',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide.none,
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
                   ),
                   filled: true,
                   fillColor: Colors.grey.shade200,
@@ -72,6 +82,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
@@ -80,9 +91,16 @@ class _RegisterPageState extends State<RegisterPage> {
                 keyboardType: TextInputType.datetime,
                 decoration: InputDecoration(
                   hintText: 'Enter your age',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide.none,
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
                   ),
                   filled: true,
                   fillColor: Colors.grey.shade200,
@@ -96,6 +114,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
@@ -104,9 +123,16 @@ class _RegisterPageState extends State<RegisterPage> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
                   hintText: 'Enter your email',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide.none,
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
                   ),
                   filled: true,
                   fillColor: Colors.grey.shade200,
@@ -120,6 +146,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
@@ -128,9 +155,16 @@ class _RegisterPageState extends State<RegisterPage> {
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
                   hintText: 'Enter your password',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide.none,
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
                   ),
                   filled: true,
                   fillColor: Colors.grey.shade200,
@@ -141,7 +175,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       _obscurePassword
                           ? Icons.visibility_off
                           : Icons.visibility,
-                      color: Colors.grey,
+                      color: Colors.grey.shade500,
+                      size: 22,
                     ),
                     onPressed: () {
                       setState(() {
@@ -157,6 +192,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
@@ -165,9 +201,16 @@ class _RegisterPageState extends State<RegisterPage> {
                 obscureText: _obscureConfirmPassword,
                 decoration: InputDecoration(
                   hintText: 'Enter your password',
+                  hintStyle: TextStyle(color: Colors.grey.shade400),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
-                    borderSide: BorderSide.none,
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    borderSide:
+                        BorderSide(color: Colors.grey.shade300, width: 1),
                   ),
                   filled: true,
                   fillColor: Colors.grey.shade200,
@@ -178,7 +221,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       _obscureConfirmPassword
                           ? Icons.visibility_off
                           : Icons.visibility,
-                      color: Colors.grey,
+                      color: Colors.grey.shade500,
+                      size: 22,
                     ),
                     onPressed: () {
                       setState(() {
@@ -191,6 +235,7 @@ class _RegisterPageState extends State<RegisterPage> {
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
+                height: 50,
                 child: ElevatedButton(
                   onPressed: () {
                     // Navigate to Language Selection page
@@ -202,7 +247,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF34567C),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -211,7 +256,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     'Next',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
@@ -222,17 +267,28 @@ class _RegisterPageState extends State<RegisterPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text("Have an account?"),
+                    Text(
+                      "Have an account?",
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
                     TextButton(
                       onPressed: () {
                         // Navigate back to Login page
                         Navigator.of(context).pop();
                       },
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        minimumSize: const Size(10, 30),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       child: const Text(
                         'Login now',
                         style: TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF34567C),
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -268,29 +324,38 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
       },
       child: Container(
         decoration: BoxDecoration(
+          color: Colors.white,
           border: Border.all(
-            color: isSelected ? Colors.blue : Colors.grey.shade300,
+            color: isSelected ? const Color(0xFF34567C) : Colors.grey.shade300,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                flag,
-                style: const TextStyle(fontSize: 40),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/images/flags/$flag.png',
+              width: 32,
+              height: 24,
+              errorBuilder: (context, error, stackTrace) {
+                return Text(
+                  flag,
+                  style: const TextStyle(fontSize: 28),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              language,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: isSelected ? const Color(0xFF34567C) : Colors.black87,
               ),
-              const SizedBox(height: 10),
-              Text(
-                language,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -299,9 +364,10 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -309,8 +375,9 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
               const Text(
                 "Choose the language you want to learn",
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
               ),
               const SizedBox(height: 30),
@@ -319,6 +386,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                   crossAxisCount: 2,
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 16,
+                  childAspectRatio: 1.3,
                   children: [
                     _buildLanguageOption("English", "🇺🇸"),
                     _buildLanguageOption("Japanese", "🇯🇵"),
@@ -328,13 +396,14 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                     _buildLanguageOption("Italian", "🇮🇹"),
                     _buildLanguageOption("Russian", "🇷🇺"),
                     _buildLanguageOption("French", "🇫🇷"),
-                    _buildLanguageOption("Korean", "🇰🇷"),
+                    _buildLanguageOption("Korea", "🇰🇷"),
                     _buildLanguageOption("German", "🇩🇪"),
                   ],
                 ),
               ),
               SizedBox(
                 width: double.infinity,
+                height: 50,
                 child: ElevatedButton(
                   onPressed: _selectedLanguage != null
                       ? () {
@@ -349,7 +418,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF34567C),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -359,12 +428,13 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                     'Next',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
                 ),
               ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -396,30 +466,37 @@ class _ProficiencyAndInterestsPageState
         });
       },
       child: Container(
+        width: double.infinity,
         decoration: BoxDecoration(
+          color: Colors.white,
           border: Border.all(
-            color: isSelected ? Colors.blue : Colors.grey.shade300,
+            color: isSelected ? const Color(0xFF34567C) : Colors.grey.shade300,
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                level,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              level,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? const Color(0xFF34567C) : Colors.black87,
               ),
-              const SizedBox(height: 4),
-              Text(
-                description,
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade600,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -441,14 +518,15 @@ class _ProficiencyAndInterestsPageState
       child: Container(
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFDCD0C0) : const Color(0xFFF2F2F2),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(20),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Text(
           interest,
           style: TextStyle(
             color: isSelected ? Colors.black87 : Colors.black54,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            fontSize: 14,
           ),
         ),
       ),
@@ -458,18 +536,20 @@ class _ProficiencyAndInterestsPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
               const Text(
-                "How good you are?",
+                "how good you are?",
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
               ),
               const SizedBox(height: 20),
@@ -477,12 +557,12 @@ class _ProficiencyAndInterestsPageState
                 children: [
                   Expanded(
                     child: _buildProficiencyOption("Basic",
-                        "Foundational skills for simple communication."),
+                        "Foundational skills for simple communication"),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildProficiencyOption(
-                        "Independent", "Confident in everyday conversations."),
+                        "Independent", "Confident in everyday conversations"),
                   ),
                 ],
               ),
@@ -491,29 +571,30 @@ class _ProficiencyAndInterestsPageState
                 children: [
                   Expanded(
                     child: _buildProficiencyOption(
-                        "Proficient", "Advanced understanding and expression."),
+                        "Proficient", "Advanced understanding and expression"),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildProficiencyOption(
-                        "Native", "Full fluency with cultural nuances."),
+                        "Native", "Full fluency with cultural nuances"),
                   ),
                 ],
               ),
               const SizedBox(height: 30),
               const Text(
-                "What topics you interest in?",
+                "topics you interest in?",
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
               ),
               const SizedBox(height: 20),
               Wrap(
                 spacing: 10,
-                runSpacing: 10,
+                runSpacing: 12,
                 children: [
-                  _buildInterestOption("Programming"),
+                  _buildInterestOption("Programing"),
                   _buildInterestOption("Fashion"),
                   _buildInterestOption("Art"),
                   _buildInterestOption("Gaming"),
@@ -526,6 +607,7 @@ class _ProficiencyAndInterestsPageState
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
+                height: 50,
                 child: ElevatedButton(
                   onPressed:
                       (_selectedLevel != null && _selectedInterests.isNotEmpty)
@@ -541,7 +623,7 @@ class _ProficiencyAndInterestsPageState
                           : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF34567C),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -551,12 +633,13 @@ class _ProficiencyAndInterestsPageState
                     'Register',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
                 ),
               ),
+              const SizedBox(height: 20),
             ],
           ),
         ),

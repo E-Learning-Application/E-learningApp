@@ -72,7 +72,7 @@ class _SplashViewBodyState extends State<SplashViewBody>
                           height: 200,
                           width: 200,
                           child: Lottie.asset(
-                            "assets/lottie/Splash_car.json",
+                            "assets/lottie/learning.json",
                             fit: BoxFit.contain,
                           ),
                         ),
