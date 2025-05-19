@@ -8,6 +8,7 @@ class AuthService {
   final ApiConsumer apiConsumer;
 
   AuthService({required this.apiConsumer});
+
   Future<bool> isUserAuthenticated() async {
     try {
       final accessToken = await _secureStorage.read(key: 'accessToken');
@@ -40,6 +41,48 @@ class AuthService {
       if (refreshToken == null || refreshToken.isEmpty) {
         return false;
       }
+
+      final tokenCreatedAtString =
+          await _secureStorage.read(key: 'tokenCreatedAt');
+      if (tokenCreatedAtString != null) {
+        final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
+        final now = DateTime.now();
+
+        if (now.difference(tokenCreatedAt).inHours < 144) {
+          return true;
+        }
+      }
+
+      final response = await apiConsumer.post(
+        '${EndPoint.baseUrl}${EndPoint.refresh}',
+        data: {
+          'refreshToken': refreshToken,
+        },
+      );
+
+      final authResponse = AuthResponse.fromJson(response);
+
+      if (authResponse.statusCode == 200 && authResponse.accessToken != null) {
+        await _secureStorage.write(
+            key: 'accessToken', value: authResponse.accessToken);
+        await _secureStorage.write(
+            key: 'refreshToken', value: authResponse.refreshToken);
+        await _secureStorage.write(
+            key: 'tokenCreatedAt', value: DateTime.now().toIso8601String());
+
+        if (authResponse.user.email.isNotEmpty) {
+          await _secureStorage.write(
+              key: 'email', value: authResponse.user.email);
+        }
+
+        if (authResponse.user.username.isNotEmpty) {
+          await _secureStorage.write(
+              key: 'username', value: authResponse.user.username);
+        }
+
+        return true;
+      }
+
       return false;
     } catch (e) {
       print('Error refreshing token: $e');
@@ -50,7 +93,7 @@ class AuthService {
   Future<AuthResponse> login(String usernameOrEmail, String password) async {
     try {
       final response = await apiConsumer.post(
-        '${EndPoint.baseUrl}/api/auth/login',
+        '${EndPoint.baseUrl}${EndPoint.login}',
         data: {
           'usernameOrEmail': usernameOrEmail,
           'password': password,
@@ -85,7 +128,7 @@ class AuthService {
       String confirmPassword) async {
     try {
       final response = await apiConsumer.post(
-        '${EndPoint.baseUrl}/api/auth/register',
+        '${EndPoint.baseUrl}${EndPoint.register}',
         data: {
           'username': username,
           'email': email,
@@ -107,7 +150,7 @@ class AuthService {
 
       if (refreshToken != null) {
         final response = await apiConsumer.post(
-          '${EndPoint.baseUrl}/api/auth/logout',
+          '${EndPoint.baseUrl}${EndPoint.logout}',
           data: {
             'refreshToken': refreshToken,
           },
@@ -132,7 +175,7 @@ class AuthService {
   Future<Map<String, dynamic>> registerAdmin(int userId) async {
     try {
       final response = await apiConsumer.post(
-        '${EndPoint.baseUrl}/api/auth/register-admin',
+        '${EndPoint.baseUrl}${EndPoint.registerAdmin}',
         data: {
           'UserId': userId,
         },
@@ -175,6 +218,20 @@ class AuthService {
     } catch (e) {
       print('Error getting access token: $e');
       return null;
+    }
+  }
+
+  Future<bool> hasRole(String role) async {
+    try {
+      final user = await getCurrentUser();
+      if (user == null) {
+        return false;
+      }
+
+      return user.roles.contains(role);
+    } catch (e) {
+      print('Error checking role: $e');
+      return false;
     }
   }
 }
@@ -244,7 +301,7 @@ class AuthResponse {
       accessToken: userData['accessToken'],
       refreshToken: userData['refreshToken'],
       statusCode: json['statusCode'],
-      message: json['message'],
+      message: json['message'] ?? '',
     );
   }
 }
@@ -287,6 +344,22 @@ class RegisterRequest {
       'email': email,
       'password': password,
       'confirmPassword': confirmPassword,
+    };
+  }
+
+  String toJsonString() => jsonEncode(toJson());
+}
+
+class RefreshTokenRequest {
+  final String refreshToken;
+
+  RefreshTokenRequest({
+    required this.refreshToken,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'refreshToken': refreshToken,
     };
   }
 

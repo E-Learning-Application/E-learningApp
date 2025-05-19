@@ -1,5 +1,26 @@
 import 'package:flutter/material.dart';
 
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Chat App UI',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.white,
+      ),
+      home: const AppContainer(),
+    );
+  }
+}
+
 class AppContainer extends StatefulWidget {
   const AppContainer({super.key});
 
@@ -21,29 +42,42 @@ class _AppContainerState extends State<AppContainer> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: ''),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: ''),
-        ],
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Colors.grey.shade200, width: 1),
+          ),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: Colors.black,
+          unselectedItemColor: Colors.grey,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: ''),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.chat_bubble_outline), label: ''),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.settings_outlined), label: ''),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.person_outline), label: ''),
+          ],
+          showSelectedLabels: false,
+          showUnselectedLabels: false,
+        ),
       ),
     );
   }
 }
 
-// Your existing HomeScreen from the provided code
+// Your updated HomeScreen
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -52,8 +86,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
+              // Welcome back section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -124,8 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.chat_bubble_outline_rounded,
               ),
               const Spacer(),
-              // Bottom Navigation
-              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -179,7 +210,8 @@ class MessagesScreen extends StatefulWidget {
 }
 
 class _MessagesScreenState extends State<MessagesScreen> {
-  final bool _hasChats = false; // Toggle between empty and filled chat list
+  // Toggle this to switch between empty and filled chat list
+  bool _hasChats = false;
 
   @override
   Widget build(BuildContext context) {
@@ -221,26 +253,26 @@ class _MessagesScreenState extends State<MessagesScreen> {
         children: [
           // Illustration
           Container(
-            width: 200,
-            height: 200,
+            width: 240,
+            height: 180,
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: Colors.grey[50],
               borderRadius: BorderRadius.circular(20),
             ),
             child: Center(
-              child: Image.asset(
-                'assets/empty_chat.png', // You'll need to add this asset
-                width: 180,
-                fit: BoxFit.contain,
+              child: Icon(
+                Icons.chat_bubble_outline,
+                size: 80,
+                color: Colors.grey[300],
               ),
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'no chats yet!',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey,
+              color: Colors.grey[600],
             ),
           ),
           const SizedBox(height: 8),
@@ -267,49 +299,44 @@ class _MessagesScreenState extends State<MessagesScreen> {
         'name': 'Blake Clarke',
         'message': 'Hello!',
         'time': '12:00 pm',
-        'avatar': 'assets/avatars/blake.png',
       },
       {
         'name': 'Lewis Moss',
         'message': 'Excited to connect with ever...',
         'time': '12:00 pm',
-        'avatar': 'assets/avatars/lewis.png',
       },
       {
         'name': 'Rosemary Rivera',
         'message': 'see you next time',
         'time': '12:00 pm',
-        'avatar': 'assets/avatars/rosemary.png',
       },
       {
         'name': 'Leland Vega',
         'message': 'thats cool',
         'time': '12:00 pm',
-        'avatar': 'assets/avatars/leland.png',
       },
       {
         'name': 'Andrea Vargas',
         'message': 'Hello! Excited to connect with ever...',
         'time': '12:00 pm',
-        'avatar': 'assets/avatars/andrea.png',
       },
       {
         'name': 'Maurice Craig',
         'message': 'well well well...',
         'time': '12:00 pm',
-        'avatar': 'assets/avatars/maurice.png',
       },
     ];
 
     return ListView.builder(
       itemCount: chats.length,
+      padding: const EdgeInsets.only(top: 8),
       itemBuilder: (context, index) {
         final chat = chats[index];
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: Colors.grey[50],
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -318,7 +345,13 @@ class _MessagesScreenState extends State<MessagesScreen> {
               CircleAvatar(
                 radius: 20,
                 backgroundColor: Colors.grey[300],
-                backgroundImage: AssetImage(chat['avatar']),
+                child: Text(
+                  chat['name'][0],
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               // Message content
@@ -542,23 +575,22 @@ class ProfileScreen extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                // Profile Avatar
+                // Profile Avatar with edit button
                 Stack(
                   alignment: Alignment.bottomRight,
                   children: [
                     Container(
-                      width: 90,
-                      height: 90,
+                      width: 100,
+                      height: 100,
                       decoration: BoxDecoration(
                         color: Colors.blue[100],
                         shape: BoxShape.circle,
                       ),
-                      child: ClipOval(
-                        child: Image.asset(
-                          'assets/avatars/rachel.png', // Replace with actual avatar
-                          width: 90,
-                          height: 90,
-                          fit: BoxFit.cover,
+                      child: const Center(
+                        child: Icon(
+                          Icons.person,
+                          size: 60,
+                          color: Colors.white,
                         ),
                       ),
                     ),
@@ -615,10 +647,10 @@ class ProfileScreen extends StatelessWidget {
                   mainAxisSpacing: 10,
                   crossAxisSpacing: 10,
                   children: [
-                    _buildGridImage('assets/images/image1.jpg'),
-                    _buildGridImage('assets/images/image2.jpg'),
-                    _buildGridImage('assets/images/image3.jpg'),
-                    _buildGridImage('assets/images/image4.jpg'),
+                    _buildGridImage(Colors.blue[100]!),
+                    _buildGridImage(Colors.purple[100]!),
+                    _buildGridImage(Colors.green[100]!),
+                    _buildGridImage(Colors.orange[100]!),
                   ],
                 ),
               ],
@@ -629,12 +661,18 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildGridImage(String imagePath) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Image.asset(
-        imagePath,
-        fit: BoxFit.cover,
+  Widget _buildGridImage(Color color) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.image,
+          size: 40,
+          color: Colors.white,
+        ),
       ),
     );
   }

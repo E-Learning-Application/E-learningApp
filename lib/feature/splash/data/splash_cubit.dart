@@ -69,7 +69,7 @@ class SplashCubit extends Cubit<SplashState> {
       Widget destination;
 
       if (isAuthenticated) {
-        destination = const HomeScreen();
+        destination = const AppContainer();
       } else if (seenOnboarding) {
         destination = const LoginView();
       } else {

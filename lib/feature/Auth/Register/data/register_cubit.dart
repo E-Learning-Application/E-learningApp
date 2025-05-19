@@ -16,12 +16,25 @@ class RegisterCubit extends Cubit<RegisterState> {
     required String confirmPassword,
   }) async {
     emit(RegisterLoading());
-
     try {
       if (password != confirmPassword) {
         emit(const RegisterFailure(message: 'Passwords do not match'));
         return;
       }
+
+      if (!isPasswordStrong(password)) {
+        emit(const RegisterFailure(
+            message:
+                'Password is not strong enough. It should contain at least 8 characters, including uppercase, lowercase, numbers, and special characters.'));
+        return;
+      }
+
+      if (!isEmailValid(email)) {
+        emit(const RegisterFailure(
+            message: 'Please enter a valid email address'));
+        return;
+      }
+
       final response = await _authService.register(
         username,
         email,
@@ -52,9 +65,9 @@ class RegisterCubit extends Cubit<RegisterState> {
     if (!password.contains(RegExp(r'[a-z]'))) return false;
     if (!password.contains(RegExp(r'[0-9]'))) return false;
     if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) return false;
-
     return true;
   }
+
   bool isEmailValid(String email) {
     return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
   }
