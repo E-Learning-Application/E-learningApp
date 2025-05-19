@@ -1,3 +1,4 @@
+import 'package:e_learning_app/feature/home/presentation/views/home_view.dart';
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
 
@@ -17,7 +18,7 @@ class LanguageLearningApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         fontFamily: 'Roboto',
       ),
-      home: SplashView(),
+      home: AppContainer(),
     );
   }
 }
