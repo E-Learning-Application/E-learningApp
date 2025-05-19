@@ -1,5 +1,5 @@
 class EndPoint {
-    static String baseUrl = "";
+  static String baseUrl = "https://elearningproject.runasp.net";
 }
 
 class ApiKey {

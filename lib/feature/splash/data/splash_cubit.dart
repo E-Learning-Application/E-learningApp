@@ -1,12 +1,17 @@
+import 'package:dio/dio.dart';
+import 'package:e_learning_app/core/api/dio_consumer.dart';
+import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/feature/auth/login/presentation/views/login_view.dart';
+import 'package:e_learning_app/feature/home/presentation/views/home_view.dart';
 import 'package:e_learning_app/feature/onboarding/presentation/view/onboarding_screen.dart';
 import 'package:e_learning_app/feature/splash/data/splash_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SplashCubit extends Cubit<SplashState> {
-  // final _secureStorage = const FlutterSecureStorage();
-  // final _authService = AuthService();
+  final _secureStorage = const FlutterSecureStorage();
+  final _authService = AuthService(apiConsumer: DioConsumer(dio: Dio()));
 
   SplashCubit() : super(SplashState.initial());
 
@@ -56,26 +61,25 @@ class SplashCubit extends Cubit<SplashState> {
   Future<void> _checkAuthAndNavigate() async {
     await Future.delayed(const Duration(milliseconds: 5000));
 
-    // try {
-    //   final seenOnboarding =
-    //       await _secureStorage.read(key: 'seenOnboarding') == 'true';
+    try {
+      final seenOnboarding =
+          await _secureStorage.read(key: 'seenOnboarding') == 'true';
+      final isAuthenticated = await _authService.isUserAuthenticated();
 
-    //   final isAuthenticated = await _authService.isUserAuthenticated();
+      Widget destination;
 
-    Widget destination;
+      if (isAuthenticated) {
+        destination = const HomeScreen();
+      } else if (seenOnboarding) {
+        destination = const LoginView();
+      } else {
+        destination = const OnboardingView();
+      }
 
-    //   if (isAuthenticated) {
-    //     destination = const MainScreen();
-    // if (seenOnboarding) {
-    //   destination = const LoginView();
-    // } else {
-    destination = const OnboardingView();
-    // }
-
-    emit(state.copyWith(navigateTo: destination));
-    // } catch (e) {
-    //   emit(state.copyWith(navigateTo: const OnboardingView()));
-    // }
+      emit(state.copyWith(navigateTo: destination));
+    } catch (e) {
+      emit(state.copyWith(navigateTo: const OnboardingView()));
+    }
   }
 
   void dispose() {
@@ -88,46 +92,3 @@ class SplashCubit extends Cubit<SplashState> {
     return super.close();
   }
 }
-
-// class AuthService {
-//   // final _secureStorage = const FlutterSecureStorage();
-
-//   Future<bool> isUserAuthenticated() async {
-//     try {
-//       final accessToken = await _secureStorage.read(key: 'accessToken');
-
-//       if (accessToken == null || accessToken.isEmpty) {
-//         return false;
-//       }
-
-//       final tokenCreatedAtString =
-//           await _secureStorage.read(key: 'tokenCreatedAt');
-//       if (tokenCreatedAtString != null) {
-//         final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
-//         final now = DateTime.now();
-
-//         if (now.difference(tokenCreatedAt).inDays > 7) {
-//           return false;
-//         }
-//       }
-
-//       return true;
-//     } catch (e) {
-//       print('Error checking authentication status: $e');
-//       return false;
-//     }
-//   }
-
-//   Future<bool> refreshTokenIfNeeded() async {
-//     try {
-//       final refreshToken = await _secureStorage.read(key: 'refreshToken');
-//       if (refreshToken == null || refreshToken.isEmpty) {
-//         return false;
-//       }
-
-//       return false;
-//     } catch (e) {
-//       return false;
-//     }
-//   }
-// }
