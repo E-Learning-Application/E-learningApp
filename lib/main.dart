@@ -3,6 +3,7 @@ import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/feature/auth/Register/data/register_cubit.dart';
 import 'package:e_learning_app/feature/auth/login/data/login_cubit.dart';
+import 'package:e_learning_app/feature/home/data/home_cubit.dart';
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -33,6 +34,11 @@ class LanguageLearningApp extends StatelessWidget {
           BlocProvider(
             create: (context) => RegisterCubit(
               authService: context.read<AuthService>(),
+            ),      
+          ),
+          BlocProvider(
+            create: (context) => AuthCubit(
+              authService: context.read<AuthService>(),
             ),
           ),
         ],
@@ -41,11 +47,12 @@ class LanguageLearningApp extends StatelessWidget {
           title: 'E-Learning App',
           theme: ThemeData(
             primarySwatch: Colors.blue,
-            fontFamily: 'Roboto',
+              fontFamily: 'Roboto',
           ),
           home: const SplashView(),
         ),
-      ),
+      ),  
     );
   }
 }
+            

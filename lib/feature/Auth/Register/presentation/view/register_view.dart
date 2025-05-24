@@ -346,7 +346,7 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                             ),
                             TextButton(
-                              onPressed: () {
+                                onPressed: () {
                                 // Navigate back to Login page
                                 Navigator.of(context).pop();
                               },

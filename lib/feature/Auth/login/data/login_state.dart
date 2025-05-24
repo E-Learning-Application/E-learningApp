@@ -1,4 +1,4 @@
-import 'package:e_learning_app/core/service/auth_service.dart';
+import 'package:e_learning_app/core/model/user_model.dart';
 import 'package:equatable/equatable.dart';
 
 abstract class LoginState extends Equatable {

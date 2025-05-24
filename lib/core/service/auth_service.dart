@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'package:e_learning_app/core/model/user_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:e_learning_app/core/api/api_consumer.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
@@ -11,7 +11,7 @@ class AuthService {
 
   Future<bool> isUserAuthenticated() async {
     try {
-      final accessToken = await _secureStorage.read(key: 'accessToken');
+      final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
 
       if (accessToken == null || accessToken.isEmpty) {
         return false;
@@ -37,7 +37,7 @@ class AuthService {
 
   Future<bool> refreshTokenIfNeeded() async {
     try {
-      final refreshToken = await _secureStorage.read(key: 'refreshToken');
+      final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
       if (refreshToken == null || refreshToken.isEmpty) {
         return false;
       }
@@ -48,6 +48,7 @@ class AuthService {
         final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
         final now = DateTime.now();
 
+        // If token is less than 144 hours old (6 days), it's still valid
         if (now.difference(tokenCreatedAt).inHours < 144) {
           return true;
         }
@@ -56,7 +57,7 @@ class AuthService {
       final response = await apiConsumer.post(
         '${EndPoint.baseUrl}${EndPoint.refresh}',
         data: {
-          'refreshToken': refreshToken,
+          ApiKey.refreshToken: refreshToken,
         },
       );
 
@@ -64,20 +65,20 @@ class AuthService {
 
       if (authResponse.statusCode == 200 && authResponse.accessToken != null) {
         await _secureStorage.write(
-            key: 'accessToken', value: authResponse.accessToken);
+            key: ApiKey.accessToken, value: authResponse.accessToken);
         await _secureStorage.write(
-            key: 'refreshToken', value: authResponse.refreshToken);
+            key: ApiKey.refreshToken, value: authResponse.refreshToken);
         await _secureStorage.write(
             key: 'tokenCreatedAt', value: DateTime.now().toIso8601String());
 
         if (authResponse.user.email.isNotEmpty) {
           await _secureStorage.write(
-              key: 'email', value: authResponse.user.email);
+              key: ApiKey.email, value: authResponse.user.email);
         }
 
         if (authResponse.user.username.isNotEmpty) {
           await _secureStorage.write(
-              key: 'username', value: authResponse.user.username);
+              key: ApiKey.username, value: authResponse.user.username);
         }
 
         return true;
@@ -104,17 +105,17 @@ class AuthService {
 
       if (authResponse.statusCode == 200 && authResponse.accessToken != null) {
         await _secureStorage.write(
-            key: 'accessToken', value: authResponse.accessToken);
+            key: ApiKey.accessToken, value: authResponse.accessToken);
         await _secureStorage.write(
-            key: 'refreshToken', value: authResponse.refreshToken);
+            key: ApiKey.refreshToken, value: authResponse.refreshToken);
         await _secureStorage.write(
             key: 'tokenCreatedAt', value: DateTime.now().toIso8601String());
         await _secureStorage.write(
-            key: 'userId', value: authResponse.user.userId.toString());
+            key: ApiKey.userId, value: authResponse.user.userId.toString());
         await _secureStorage.write(
-            key: 'username', value: authResponse.user.username);
+            key: ApiKey.username, value: authResponse.user.username);
         await _secureStorage.write(
-            key: 'email', value: authResponse.user.email);
+            key: ApiKey.email, value: authResponse.user.email);
       }
 
       return authResponse;
@@ -130,8 +131,8 @@ class AuthService {
       final response = await apiConsumer.post(
         '${EndPoint.baseUrl}${EndPoint.register}',
         data: {
-          'username': username,
-          'email': email,
+          ApiKey.username: username,
+          ApiKey.email: email,
           'password': password,
           'confirmPassword': confirmPassword,
         },
@@ -146,21 +147,22 @@ class AuthService {
 
   Future<Map<String, dynamic>> logout() async {
     try {
-      final refreshToken = await _secureStorage.read(key: 'refreshToken');
+      final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
 
       if (refreshToken != null) {
         final response = await apiConsumer.post(
           '${EndPoint.baseUrl}${EndPoint.logout}',
           data: {
-            'refreshToken': refreshToken,
+            ApiKey.refreshToken: refreshToken,
           },
         );
-        await _secureStorage.delete(key: 'accessToken');
-        await _secureStorage.delete(key: 'refreshToken');
+
+        await _secureStorage.delete(key: ApiKey.accessToken);
+        await _secureStorage.delete(key: ApiKey.refreshToken);
         await _secureStorage.delete(key: 'tokenCreatedAt');
-        await _secureStorage.delete(key: 'userId');
-        await _secureStorage.delete(key: 'username');
-        await _secureStorage.delete(key: 'email');
+        await _secureStorage.delete(key: ApiKey.userId);
+        await _secureStorage.delete(key: ApiKey.username);
+        await _secureStorage.delete(key: ApiKey.email);
 
         return response;
       } else {
@@ -177,7 +179,7 @@ class AuthService {
       final response = await apiConsumer.post(
         '${EndPoint.baseUrl}${EndPoint.registerAdmin}',
         data: {
-          'UserId': userId,
+          ApiKey.userId: userId,
         },
       );
 
@@ -190,9 +192,9 @@ class AuthService {
 
   Future<User?> getCurrentUser() async {
     try {
-      final userId = await _secureStorage.read(key: 'userId');
-      final username = await _secureStorage.read(key: 'username');
-      final email = await _secureStorage.read(key: 'email');
+      final userId = await _secureStorage.read(key: ApiKey.userId);
+      final username = await _secureStorage.read(key: ApiKey.username);
+      final email = await _secureStorage.read(key: ApiKey.email);
 
       if (userId == null || username == null || email == null) {
         return null;
@@ -203,7 +205,9 @@ class AuthService {
         username: username,
         email: email,
         isAuthenticated: true,
-        roles: ['User'],
+        roles: [
+          'User'
+        ], // Default role, you might want to store and retrieve actual roles
         refreshTokenExpiration: null,
       );
     } catch (e) {
@@ -214,9 +218,18 @@ class AuthService {
 
   Future<String?> getAccessToken() async {
     try {
-      return await _secureStorage.read(key: 'accessToken');
+      return await _secureStorage.read(key: ApiKey.accessToken);
     } catch (e) {
       print('Error getting access token: $e');
+      return null;
+    }
+  }
+
+  Future<String?> getRefreshToken() async {
+    try {
+      return await _secureStorage.read(key: ApiKey.refreshToken);
+    } catch (e) {
+      print('Error getting refresh token: $e');
       return null;
     }
   }
@@ -234,134 +247,21 @@ class AuthService {
       return false;
     }
   }
-}
 
-class User {
-  final int userId;
-  final String username;
-  final String email;
-  final bool isAuthenticated;
-  final List<String> roles;
-  final DateTime? refreshTokenExpiration;
-
-  User({
-    required this.userId,
-    required this.username,
-    required this.email,
-    required this.isAuthenticated,
-    required this.roles,
-    this.refreshTokenExpiration,
-  });
-
-  factory User.fromJson(Map<String, dynamic> json) {
-    return User(
-      userId: json['userId'],
-      username: json['username'],
-      email: json['email'],
-      isAuthenticated: json['isAuthenticated'],
-      roles: List<String>.from(json['roles']),
-      refreshTokenExpiration: json['refreshTokenExpiration'] != null &&
-              json['refreshTokenExpiration'] != "0001-01-01T00:00:00"
-          ? DateTime.parse(json['refreshTokenExpiration'])
-          : null,
-    );
+  Future<bool> isAdmin() async {
+    return await hasRole('Admin');
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'userId': userId,
-      'username': username,
-      'email': email,
-      'isAuthenticated': isAuthenticated,
-      'roles': roles,
-      'refreshTokenExpiration': refreshTokenExpiration?.toIso8601String(),
-    };
+  Future<void> clearAuthenticationData() async {
+    try {
+      await _secureStorage.delete(key: ApiKey.accessToken);
+      await _secureStorage.delete(key: ApiKey.refreshToken);
+      await _secureStorage.delete(key: 'tokenCreatedAt');
+      await _secureStorage.delete(key: ApiKey.userId);
+      await _secureStorage.delete(key: ApiKey.username);
+      await _secureStorage.delete(key: ApiKey.email);
+    } catch (e) {
+      print('Error clearing authentication data: $e');
+    }
   }
-}
-
-class AuthResponse {
-  final User user;
-  final String? accessToken;
-  final String? refreshToken;
-  final int statusCode;
-  final String message;
-
-  AuthResponse({
-    required this.user,
-    this.accessToken,
-    this.refreshToken,
-    required this.statusCode,
-    required this.message,
-  });
-
-  factory AuthResponse.fromJson(Map<String, dynamic> json) {
-    final userData = json['data'];
-    return AuthResponse(
-      user: User.fromJson(userData),
-      accessToken: userData['accessToken'],
-      refreshToken: userData['refreshToken'],
-      statusCode: json['statusCode'],
-      message: json['message'] ?? '',
-    );
-  }
-}
-
-class LoginRequest {
-  final String usernameOrEmail;
-  final String password;
-
-  LoginRequest({
-    required this.usernameOrEmail,
-    required this.password,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'usernameOrEmail': usernameOrEmail,
-      'password': password,
-    };
-  }
-
-  String toJsonString() => jsonEncode(toJson());
-}
-
-class RegisterRequest {
-  final String username;
-  final String email;
-  final String password;
-  final String confirmPassword;
-
-  RegisterRequest({
-    required this.username,
-    required this.email,
-    required this.password,
-    required this.confirmPassword,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'username': username,
-      'email': email,
-      'password': password,
-      'confirmPassword': confirmPassword,
-    };
-  }
-
-  String toJsonString() => jsonEncode(toJson());
-}
-
-class RefreshTokenRequest {
-  final String refreshToken;
-
-  RefreshTokenRequest({
-    required this.refreshToken,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'refreshToken': refreshToken,
-    };
-  }
-
-  String toJsonString() => jsonEncode(toJson());
 }
