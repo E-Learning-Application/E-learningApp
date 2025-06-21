@@ -20,11 +20,13 @@ class AuthService {
 
       final tokenCreatedAtString =
           await _secureStorage.read(key: 'tokenCreatedAt');
+      
       if (tokenCreatedAtString != null) {
         final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
         final now = DateTime.now();
 
-        if (now.difference(tokenCreatedAt).inDays > 7) {
+        // Check if access token is expired (after 24 minutes, leaving 6 minutes buffer)
+        if (now.difference(tokenCreatedAt).inMinutes > 24) {
           return false;
         }
       }
@@ -36,31 +38,64 @@ class AuthService {
     }
   }
 
+  Future<bool> shouldRefreshToken() async {
+    try {
+      final tokenCreatedAtString =
+          await _secureStorage.read(key: 'tokenCreatedAt');
+      
+      if (tokenCreatedAtString == null) {
+        return false;
+      }
+
+      final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
+      final now = DateTime.now();
+
+      // Refresh if token is older than 20 minutes (10 minutes before expiry)
+      return now.difference(tokenCreatedAt).inMinutes > 20;
+    } catch (e) {
+      print('Error checking if token should refresh: $e');
+      return false;
+    }
+  }
+
   Future<bool> refreshTokenIfNeeded() async {
     try {
       final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
       if (refreshToken == null || refreshToken.isEmpty) {
+        print('No refresh token available');
         return false;
       }
 
+      // Check if refresh token is still valid (7 days)
       final tokenCreatedAtString =
           await _secureStorage.read(key: 'tokenCreatedAt');
       if (tokenCreatedAtString != null) {
         final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
         final now = DateTime.now();
 
-        // If token is less than 144 hours old (6 days), it's still valid
-        if (now.difference(tokenCreatedAt).inHours < 144) {
-          return true;
+        // If refresh token is expired (after 7 days), return false
+        if (now.difference(tokenCreatedAt).inDays >= 7) {
+          print('Refresh token expired');
+          await _clearLocalStorage();
+          return false;
         }
       }
 
+      print('Attempting to refresh token...');
+      
       final response = await apiConsumer.post(
-        '${EndPoint.baseUrl}${EndPoint.refresh}',
+        EndPoint.refresh, // Remove baseUrl as it's already set in DioConsumer
         data: {
           ApiKey.refreshToken: refreshToken,
         },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
       );
+
+      print('Refresh token response received');
 
       final authResponse = AuthResponse.fromJson(response);
 
@@ -82,12 +117,16 @@ class AuthService {
               key: ApiKey.username, value: authResponse.user.username);
         }
 
+        print('Token refreshed successfully');
         return true;
       }
 
+      print('Token refresh failed: Invalid response');
       return false;
     } catch (e) {
       print('Error refreshing token: $e');
+      // If refresh fails, clear tokens to force re-login
+      await _clearLocalStorage();
       return false;
     }
   }
@@ -95,11 +134,16 @@ class AuthService {
   Future<AuthResponse> login(String usernameOrEmail, String password) async {
     try {
       final response = await apiConsumer.post(
-        '${EndPoint.baseUrl}${EndPoint.login}',
+        EndPoint.login,
         data: {
           'usernameOrEmail': usernameOrEmail,
           'password': password,
         },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
       );
 
       final authResponse = AuthResponse.fromJson(response);
@@ -130,13 +174,18 @@ class AuthService {
       String confirmPassword) async {
     try {
       final response = await apiConsumer.post(
-        '${EndPoint.baseUrl}${EndPoint.register}',
+        EndPoint.register,
         data: {
           ApiKey.username: username,
           ApiKey.email: email,
           'password': password,
           'confirmPassword': confirmPassword,
         },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
       );
 
       return AuthResponse.fromJson(response);
@@ -147,90 +196,96 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> logout() async {
-  try {
-    final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
-    final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
+    try {
+      final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
+      final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
 
-    if (refreshToken != null && accessToken != null) {
-      try {
-        // Make the API call with both authorization header and refresh token in body
-        final response = await apiConsumer.post(
-          '${EndPoint.baseUrl}${EndPoint.logout}',
-          data: {
-            ApiKey.refreshToken: refreshToken,
-          },
-          options: Options(
-            headers: {
-              'Authorization': 'Bearer $accessToken',
-              'Content-Type': 'application/json',
+      if (refreshToken != null && accessToken != null) {
+        try {
+          // Make the API call with both authorization header and refresh token in body
+          final response = await apiConsumer.post(
+            EndPoint.logout,
+            data: {
+              ApiKey.refreshToken: refreshToken,
             },
-          ),
-        );
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $accessToken',
+                'Content-Type': 'application/json',
+              },
+            ),
+          );
 
-        // Clear local storage regardless of API response
-        await _clearLocalStorage();
+          // Clear local storage regardless of API response
+          await _clearLocalStorage();
 
-        // Handle the response based on its type
-        if (response is Map<String, dynamic>) {
-          return response;
-        } else if (response is String) {
-          // If response is a string, parse it or create a proper response
+          // Handle the response based on its type
+          if (response is Map<String, dynamic>) {
+            return response;
+          } else if (response is String) {
+            // If response is a string, parse it or create a proper response
+            return {
+              'success': true,
+              'message': 'Logged out successfully',
+              'statusCode': 200,
+            };
+          } else {
+            return {
+              'success': true,
+              'message': 'Logged out successfully',
+              'statusCode': 200,
+            };
+          }
+        } catch (apiError) {
+          // If API call fails, still clear local storage
+          print('API logout failed: $apiError');
+          await _clearLocalStorage();
+          
+          // Return success since local cleanup is what matters most
           return {
             'success': true,
-            'message': 'Logged out successfully',
-            'statusCode': 200,
-          };
-        } else {
-          return {
-            'success': true,
-            'message': 'Logged out successfully',
+            'message': 'Logged out locally (API call failed)',
             'statusCode': 200,
           };
         }
-      } catch (apiError) {
-        // If API call fails, still clear local storage
-        print('API logout failed: $apiError');
+      } else {
+        // No tokens found, just clear any remaining data
         await _clearLocalStorage();
-        
-        // Return success since local cleanup is what matters most
         return {
           'success': true,
-          'message': 'Logged out locally (API call failed)',
+          'message': 'Already logged out',
           'statusCode': 200,
         };
       }
-    } else {
-      // No tokens found, just clear any remaining data
+    } catch (e) {
+      print('Error during logout: $e');
+      // Ensure local storage is cleared even if there's an error
       await _clearLocalStorage();
-      return {
-        'success': true,
-        'message': 'Already logged out',
-        'statusCode': 200,
-      };
+      throw Exception('Failed to logout: $e');
     }
-  } catch (e) {
-    print('Error during logout: $e');
-    // Ensure local storage is cleared even if there's an error
-    await _clearLocalStorage();
-    throw Exception('Failed to logout: $e');
   }
-}
 
-Future<void> _clearLocalStorage() async {
-  await _secureStorage.delete(key: ApiKey.accessToken);
-  await _secureStorage.delete(key: ApiKey.refreshToken);
-  await _secureStorage.delete(key: 'tokenCreatedAt');
-  await _secureStorage.delete(key: ApiKey.userId);
-  await _secureStorage.delete(key: ApiKey.username);
-  await _secureStorage.delete(key: ApiKey.email);
-}
+  Future<void> _clearLocalStorage() async {
+    await _secureStorage.delete(key: ApiKey.accessToken);
+    await _secureStorage.delete(key: ApiKey.refreshToken);
+    await _secureStorage.delete(key: 'tokenCreatedAt');
+    await _secureStorage.delete(key: ApiKey.userId);
+    await _secureStorage.delete(key: ApiKey.username);
+    await _secureStorage.delete(key: ApiKey.email);
+  }
+
   Future<Map<String, dynamic>> registerAdmin(int userId) async {
     try {
       final response = await apiConsumer.post(
-        '${EndPoint.baseUrl}${EndPoint.registerAdmin}',
+        EndPoint.registerAdmin,
         data: {
           ApiKey.userId: userId,
         },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
       );
 
       return response;
@@ -304,14 +359,45 @@ Future<void> _clearLocalStorage() async {
 
   Future<void> clearAuthenticationData() async {
     try {
-      await _secureStorage.delete(key: ApiKey.accessToken);
-      await _secureStorage.delete(key: ApiKey.refreshToken);
-      await _secureStorage.delete(key: 'tokenCreatedAt');
-      await _secureStorage.delete(key: ApiKey.userId);
-      await _secureStorage.delete(key: ApiKey.username);
-      await _secureStorage.delete(key: ApiKey.email);
+      await _clearLocalStorage();
     } catch (e) {
       print('Error clearing authentication data: $e');
+    }
+  }
+
+  // New method to check and refresh token proactively
+  Future<bool> validateAndRefreshTokenIfNeeded() async {
+    try {
+      // First check if we have tokens
+      final accessToken = await getAccessToken();
+      final refreshToken = await getRefreshToken();
+      
+      if (accessToken == null || refreshToken == null) {
+        print('No tokens available');
+        return false;
+      }
+
+      // Check if access token is still valid
+      final isAuthenticated = await isUserAuthenticated();
+      
+      if (!isAuthenticated) {
+        print('Access token expired, attempting refresh...');
+        return await refreshTokenIfNeeded();
+      }
+
+      // Check if we should proactively refresh the token
+      final shouldRefresh = await shouldRefreshToken();
+      
+      if (shouldRefresh) {
+        print('Proactively refreshing token...');
+        return await refreshTokenIfNeeded();
+      }
+
+      print('Token is still valid');
+      return true;
+    } catch (e) {
+      print('Error validating and refreshing token: $e');
+      return false;
     }
   }
 }

@@ -5,6 +5,7 @@ import 'package:e_learning_app/feature/profile/presentation/views/profile_view.d
 import 'package:e_learning_app/feature/settings/presentation/view/settings_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'dart:async';
 
 class AppContainer extends StatefulWidget {
   const AppContainer({super.key});
@@ -16,6 +17,8 @@ class AppContainer extends StatefulWidget {
 class _AppContainerState extends State<AppContainer>
     with WidgetsBindingObserver {
   int _currentIndex = 0;
+  Timer? _tokenCheckTimer;
+  bool _isCheckingToken = false;
 
   final List<Widget> _pages = [
     const HomeScreen(),
@@ -28,35 +31,168 @@ class _AppContainerState extends State<AppContainer>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _startTokenValidation();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _validateToken();
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _tokenCheckTimer?.cancel();
     super.dispose();
+  }
+
+  void _startTokenValidation() {
+    // Check token every 5 minutes
+    _tokenCheckTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      if (mounted && !_isCheckingToken) {
+        _validateToken();
+      }
+    });
+  }
+
+  Future<void> _validateToken() async {
+    if (_isCheckingToken) return;
+    
+    setState(() {
+      _isCheckingToken = true;
+    });
+
+    try {
+      final authCubit = context.read<AuthCubit>();
+      
+      // Only validate if user is currently authenticated
+      if (authCubit.isAuthenticated) {
+        await authCubit.validateAndRefreshToken();
+      }
+    } catch (e) {
+      print('Error during token validation: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingToken = false;
+        });
+      }
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    if (state == AppLifecycleState.resumed) {
-      context.read<AuthCubit>().validateAndRefreshToken();
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App came back to foreground - validate token
+        _validateToken();
+        
+        // Restart periodic timer if it was cancelled
+        if (_tokenCheckTimer?.isActive != true) {
+          _startTokenValidation();
+        }
+        break;
+      case AppLifecycleState.paused:
+        // App going to background - pause timer to save resources
+        _tokenCheckTimer?.cancel();
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        break;
     }
+  }
+
+  void _onPageChanged(int index) {
+    // Validate token before changing page
+    if (context.read<AuthCubit>().isAuthenticated) {
+      _validateToken();
+    }
+    
+    setState(() {
+      _currentIndex = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
-        if (state is AuthTokenExpired || state is AuthUnauthenticated) {
+        if (state is AuthTokenExpired) {
+          // Token expired - show snackbar and redirect to login
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          
+          // Reset to home page
           setState(() {
             _currentIndex = 0;
           });
+          
+          // Navigate to login screen (you'll need to implement this)
+          // Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+          
+        } else if (state is AuthUnauthenticated) {
+          // User logged out - reset to home page
+          setState(() {
+            _currentIndex = 0;
+          });
+        } else if (state is AuthError) {
+          // Show error message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
       },
       child: Scaffold(
-        body: _pages[_currentIndex],
+        body: Stack(
+          children: [
+            _pages[_currentIndex],
+            
+            // Show loading indicator when checking token
+            if (_isCheckingToken)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Syncing...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
             border: Border(
@@ -65,11 +201,7 @@ class _AppContainerState extends State<AppContainer>
           ),
           child: BottomNavigationBar(
             currentIndex: _currentIndex,
-            onTap: (index) {
-              setState(() {
-                _currentIndex = index;
-              });
-            },
+            onTap: _onPageChanged,
             type: BottomNavigationBarType.fixed,
             selectedItemColor: Colors.black,
             unselectedItemColor: Colors.grey,
@@ -115,9 +247,11 @@ class _HomeScreenState extends State<HomeScreen> {
               BlocBuilder<AuthCubit, AuthState>(
                 builder: (context, state) {
                   String userName = 'User';
+                  bool isAuthenticated = false;
 
                   if (state is AuthAuthenticated) {
                     userName = state.user.username;
+                    isAuthenticated = true;
                   }
 
                   return Row(
@@ -127,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Welcome back',
+                            isAuthenticated ? 'Welcome back' : 'Welcome',
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 14,
@@ -140,21 +274,31 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 24,
                             ),
                           ),
+                          if (state is AuthLoading)
+                            const Text(
+                              'Syncing...',
+                              style: TextStyle(
+                                color: Colors.orange,
+                                fontSize: 12,
+                              ),
+                            ),
                         ],
                       ),
                       GestureDetector(
                         onTap: () {
                           // Validate token when user taps profile
-                          context.read<AuthCubit>().validateAndRefreshToken();
+                          if (isAuthenticated) {
+                            context.read<AuthCubit>().validateAndRefreshToken();
+                          }
                         },
                         child: Container(
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.amber[200],
+                            color: isAuthenticated ? Colors.amber[200] : Colors.grey[400],
                             shape: BoxShape.circle,
                           ),
-                          child: const Center(
+                          child: Center(
                             child: Icon(
                               Icons.person,
                               color: Colors.white,
@@ -198,16 +342,41 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _handleFeatureAccess(BuildContext context, String feature) {
-    // Check token validity before accessing features
-    context.read<AuthCubit>().validateAndRefreshToken();
+  void _handleFeatureAccess(BuildContext context, String feature) async {
+    final authCubit = context.read<AuthCubit>();
+    
+    // Check if user is authenticated
+    if (!authCubit.isAuthenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please login to access this feature'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature feature accessed'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    // Validate token before accessing features
+    await authCubit.validateAndRefreshToken();
+    
+    // Check state after validation
+    final currentState = authCubit.state;
+    if (currentState is AuthAuthenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$feature feature accessed'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Session expired. Please login again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildCallOption({

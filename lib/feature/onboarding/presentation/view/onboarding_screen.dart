@@ -26,7 +26,7 @@ class OnboardingViewBody extends StatelessWidget {
       builder: (context, state) {
         final cubit = context.read<OnboardingCubit>();
         return Scaffold(
-          backgroundColor: Colors.white,
+          backgroundColor: const Color(0xFFE7D6C9),
           body: SafeArea(
             child: Column(
               children: [
@@ -72,7 +72,7 @@ class OnboardingViewBody extends StatelessWidget {
                         controller: cubit.pageController,
                         count: 3,
                         effect: ExpandingDotsEffect(
-                          activeDotColor: Theme.of(context).primaryColor,
+                          activeDotColor: const Color(0xFF2D3142),
                           dotColor: Colors.grey.shade300,
                           dotHeight: 8,
                           dotWidth: 8,
@@ -85,7 +85,7 @@ class OnboardingViewBody extends StatelessWidget {
                         child: Text(
                           state.currentPage == 2 ? "Let's Start!" : "Next",
                           style: TextStyle(
-                            color: Theme.of(context).primaryColor,
+                            color: const Color(0xFF2D3142),
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),

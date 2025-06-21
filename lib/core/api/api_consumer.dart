@@ -28,4 +28,11 @@ abstract class ApiConsumer {
     Options? options,
     bool isFromData = false,
   });
+    Future put(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    bool isFromData = false,
+  });
 }

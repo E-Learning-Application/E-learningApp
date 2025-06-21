@@ -7,6 +7,13 @@ class EndPoint {
   static String refresh = "/api/auth/refresh";
   static String logout = "/api/auth/logout";
   static String registerAdmin = "/api/auth/register-admin";
+
+   // Language endpoints
+  static const String getAllLanguages = '/api/language/languages';
+  
+  // Language Preference endpoints
+  static const String getUserLanguagePreferences = '/api/LanguagePreference/user-language-preferences';
+  static const String updateUserLanguagePreferences = '/api/LanguagePreference/update-user-language-preferences';
 }
 class ApiKey {
   static String status = "statusCode";

@@ -15,27 +15,16 @@ class OnboardingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      color: const Color(0xFFE7D6C9),
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        color: const Color(
-            0xFFE7D6C9), // Light beige color as shown in screenshots
-        borderRadius: BorderRadius.circular(16),
-      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(height: 30),
           Expanded(
             flex: 6,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Image.asset(
-                imagePath,
-                fit: BoxFit.contain,
-              ),
+            child: Image.asset(
+              imagePath,
+              fit: BoxFit.contain,
             ),
           ),
           const SizedBox(height: 20),
@@ -73,7 +62,6 @@ class OnboardingPage extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 30),
         ],
       ),
     );
