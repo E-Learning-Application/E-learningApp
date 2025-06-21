@@ -34,7 +34,7 @@ class _LoginViewState extends State<LoginView> {
             Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => HomeScreen(),
+                  builder: (context) => AppContainer(),
                 ));
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -89,7 +89,7 @@ class _LoginViewState extends State<LoginView> {
                   ),
                   const SizedBox(height: 30),
                   const Text(
-                    'Email',
+                    'Username or Email',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
@@ -193,7 +193,6 @@ class _LoginViewState extends State<LoginView> {
                       onPressed: state is LoginLoading
                           ? null
                           : () {
-                              // Trigger login when button is pressed
                               context.read<LoginCubit>().login(
                                     _emailController.text,
                                     _passwordController.text,

@@ -2,6 +2,7 @@ import 'package:e_learning_app/core/model/user_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:e_learning_app/core/api/api_consumer.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
+import 'package:dio/dio.dart';
 
 class AuthService {
   final _secureStorage = const FlutterSecureStorage();
@@ -146,34 +147,83 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> logout() async {
-    try {
-      final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
+  try {
+    final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
+    final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
 
-      if (refreshToken != null) {
+    if (refreshToken != null && accessToken != null) {
+      try {
+        // Make the API call with both authorization header and refresh token in body
         final response = await apiConsumer.post(
           '${EndPoint.baseUrl}${EndPoint.logout}',
           data: {
             ApiKey.refreshToken: refreshToken,
           },
+          options: Options(
+            headers: {
+              'Authorization': 'Bearer $accessToken',
+              'Content-Type': 'application/json',
+            },
+          ),
         );
 
-        await _secureStorage.delete(key: ApiKey.accessToken);
-        await _secureStorage.delete(key: ApiKey.refreshToken);
-        await _secureStorage.delete(key: 'tokenCreatedAt');
-        await _secureStorage.delete(key: ApiKey.userId);
-        await _secureStorage.delete(key: ApiKey.username);
-        await _secureStorage.delete(key: ApiKey.email);
+        // Clear local storage regardless of API response
+        await _clearLocalStorage();
 
-        return response;
-      } else {
-        throw Exception('No refresh token found');
+        // Handle the response based on its type
+        if (response is Map<String, dynamic>) {
+          return response;
+        } else if (response is String) {
+          // If response is a string, parse it or create a proper response
+          return {
+            'success': true,
+            'message': 'Logged out successfully',
+            'statusCode': 200,
+          };
+        } else {
+          return {
+            'success': true,
+            'message': 'Logged out successfully',
+            'statusCode': 200,
+          };
+        }
+      } catch (apiError) {
+        // If API call fails, still clear local storage
+        print('API logout failed: $apiError');
+        await _clearLocalStorage();
+        
+        // Return success since local cleanup is what matters most
+        return {
+          'success': true,
+          'message': 'Logged out locally (API call failed)',
+          'statusCode': 200,
+        };
       }
-    } catch (e) {
-      print('Error during logout: $e');
-      throw Exception('Failed to logout: $e');
+    } else {
+      // No tokens found, just clear any remaining data
+      await _clearLocalStorage();
+      return {
+        'success': true,
+        'message': 'Already logged out',
+        'statusCode': 200,
+      };
     }
+  } catch (e) {
+    print('Error during logout: $e');
+    // Ensure local storage is cleared even if there's an error
+    await _clearLocalStorage();
+    throw Exception('Failed to logout: $e');
   }
+}
 
+Future<void> _clearLocalStorage() async {
+  await _secureStorage.delete(key: ApiKey.accessToken);
+  await _secureStorage.delete(key: ApiKey.refreshToken);
+  await _secureStorage.delete(key: 'tokenCreatedAt');
+  await _secureStorage.delete(key: ApiKey.userId);
+  await _secureStorage.delete(key: ApiKey.username);
+  await _secureStorage.delete(key: ApiKey.email);
+}
   Future<Map<String, dynamic>> registerAdmin(int userId) async {
     try {
       final response = await apiConsumer.post(
