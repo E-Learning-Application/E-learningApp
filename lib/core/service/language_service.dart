@@ -1,7 +1,6 @@
 import 'package:e_learning_app/core/api/api_consumer.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
 
-// Models
 class Language {
   final int id;
   final String name;

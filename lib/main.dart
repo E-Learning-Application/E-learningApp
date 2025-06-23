@@ -4,7 +4,7 @@ import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/feature/auth/Register/data/register_cubit.dart';
 import 'package:e_learning_app/feature/auth/login/data/login_cubit.dart';
 import 'package:e_learning_app/feature/home/data/home_cubit.dart';
-import 'package:e_learning_app/feature/language/presentation/view/language_view.dart';
+import 'package:e_learning_app/feature/Auth/Register/presentation/view/language_view.dart';
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -50,7 +50,7 @@ class LanguageLearningApp extends StatelessWidget {
             primarySwatch: Colors.blue,
               fontFamily: 'Roboto',
           ),
-          home: const LanguageSelectionPage(),
+          home: LanguageSelectionPage(),
         ),
       ),  
     );

@@ -10,6 +10,9 @@ class EndPoint {
 
    // Language endpoints
   static const String getAllLanguages = '/api/language/languages';
+static const String addLanguages = '/api/language/add-languages';
+static const String updateLanguages = '/api/language/update-languages';
+static const String removeLanguages = '/api/language/remove-languages';
   
   // Language Preference endpoints
   static const String getUserLanguagePreferences = '/api/LanguagePreference/user-language-preferences';
