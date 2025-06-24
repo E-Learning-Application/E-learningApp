@@ -1,4 +1,3 @@
-
 import 'package:e_learning_app/core/api/end_points.dart';
 
 class User {
@@ -62,9 +61,18 @@ class AuthResponse {
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
     final userData = json[ApiKey.data];
     return AuthResponse(
-      user: User.fromJson(userData),
-      accessToken: userData[ApiKey.accessToken],
-      refreshToken: userData[ApiKey.refreshToken],
+      user: userData != null
+          ? User.fromJson(userData)
+          : User(
+              userId: 0,
+              username: '',
+              email: '',
+              isAuthenticated: false,
+              roles: [],
+              refreshTokenExpiration: null,
+            ),
+      accessToken: userData != null ? userData[ApiKey.accessToken] : null,
+      refreshToken: userData != null ? userData[ApiKey.refreshToken] : null,
       statusCode: json[ApiKey.status],
       message: json[ApiKey.message] ?? '',
     );

@@ -164,117 +164,166 @@ class AuthService {
       }
 
       return authResponse;
+    } on DioException catch (dioError) {
+      print('Dio error: [31m${dioError.type}\nStatus code: ${dioError.response?.statusCode}\nResponse data: ${dioError.response?.data}[0m');
+      String errorMessage = 'Login failed';
+      int statusCode = dioError.response?.statusCode ?? 500;
+      if (dioError.response?.data != null) {
+        try {
+          final errorData = dioError.response!.data;
+          if (errorData is Map<String, dynamic>) {
+            errorMessage = errorData['message'] ?? errorData['error'] ?? errorData['title'] ?? 'Login failed';
+          } else if (errorData is String) {
+            errorMessage = errorData;
+          }
+        } catch (e) {
+          print('Error parsing error response: $e');
+        }
+      } else {
+        switch (statusCode) {
+          case 400:
+            errorMessage = 'Invalid login data. Please check your input.';
+            break;
+          case 401:
+            errorMessage = 'Unauthorized. Please check your credentials.';
+            break;
+          case 500:
+            errorMessage = 'Server error. Please try again later.';
+            break;
+          default:
+            errorMessage = 'Login failed. Please try again.';
+        }
+      }
+      return AuthResponse(
+        statusCode: statusCode,
+        message: errorMessage,
+        accessToken: null,
+        refreshToken: null,
+        user: User(
+          userId: 0,
+          username: '',
+          email: '',
+          isAuthenticated: false,
+          roles: [],
+          refreshTokenExpiration: null,
+        ),
+      );
     } catch (e) {
       print('Login error: $e');
-      throw Exception('Failed to login: $e');
+      return AuthResponse(
+        statusCode: 500,
+        message: 'Login failed: [31m${e.toString()}[0m',
+        accessToken: null,
+        refreshToken: null,
+        user: User(
+          userId: 0,
+          username: '',
+          email: '',
+          isAuthenticated: false,
+          roles: [],
+          refreshTokenExpiration: null,
+        ),
+      );
     }
   }
 
   Future<AuthResponse> register(String username, String email, String password,
-    String confirmPassword) async {
-  try {
-    final response = await apiConsumer.post(
-      EndPoint.register,
-      data: {
-        ApiKey.username: username,
-        ApiKey.email: email,
-        'password': password,
-        'confirmPassword': confirmPassword,
-      },
-      options: Options(
-        headers: {
-          'Content-Type': 'application/json',
+      String confirmPassword) async {
+    try {
+      final response = await apiConsumer.post(
+        EndPoint.register,
+        data: {
+          ApiKey.username: username,
+          ApiKey.email: email,
+          'password': password,
+          'confirmPassword': confirmPassword,
         },
-      ),
-    );
-
-    // Check if response is null or empty
-    if (response == null) {
-      throw Exception('Server returned empty response');
-    }
-
-    return AuthResponse.fromJson(response);
-  } on DioException catch (dioError) {
-    // Handle Dio specific errors (400, 401, 500, etc.)
-    print('Dio error: ${dioError.type}');
-    print('Status code: ${dioError.response?.statusCode}');
-    print('Response data: ${dioError.response?.data}');
-    
-    String errorMessage = 'Registration failed';
-    int statusCode = dioError.response?.statusCode ?? 500;
-    
-    // Try to extract error message from response
-    if (dioError.response?.data != null) {
-      try {
-        final errorData = dioError.response!.data;
-        if (errorData is Map<String, dynamic>) {
-          // Handle structured error response
-          errorMessage = errorData['message'] ?? 
-                        errorData['error'] ?? 
-                        errorData['title'] ?? 
-                        'Registration failed';
-        } else if (errorData is String) {
-          // Handle string error response
-          errorMessage = errorData;
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      if (response == null) {
+        return AuthResponse(
+          statusCode: 500,
+          message: 'Server returned empty response',
+          user: User(
+              userId: 0,
+              username: '',
+              email: '',
+              isAuthenticated: false,
+              roles: []),
+        );
+      }
+      return AuthResponse.fromJson(response);
+    } on DioException catch (dioError) {
+      print(
+          'Dio error:  [31m${dioError.type}\nStatus code: ${dioError.response?.statusCode}\nResponse data: ${dioError.response?.data} [0m');
+      String errorMessage = 'Registration failed';
+      int statusCode = dioError.response?.statusCode ?? 500;
+      if (dioError.response?.data != null) {
+        try {
+          final errorData = dioError.response!.data;
+          if (errorData is Map<String, dynamic>) {
+            errorMessage = errorData['message'] ??
+                errorData['error'] ??
+                errorData['title'] ??
+                'Registration failed';
+          } else if (errorData is String) {
+            errorMessage = errorData;
+          }
+        } catch (e) {
+          print('Error parsing error response: $e');
         }
-      } catch (e) {
-        print('Error parsing error response: $e');
+      } else {
+        switch (statusCode) {
+          case 400:
+            errorMessage =
+                'Invalid registration data. Please check your input.';
+            break;
+          case 409:
+            errorMessage = 'Username or email already exists.';
+            break;
+          case 500:
+            errorMessage = 'Server error. Please try again later.';
+            break;
+          default:
+            errorMessage = 'Registration failed. Please try again.';
+        }
       }
-    } else {
-      // Handle common HTTP status codes
-      switch (statusCode) {
-        case 400:
-          errorMessage = 'Invalid registration data. Please check your input.';
-          break;
-        case 409:
-          errorMessage = 'Username or email already exists.';
-          break;
-        case 422:
-          errorMessage = 'Validation failed. Please check your input.';
-          break;
-        case 500:
-          errorMessage = 'Server error. Please try again later.';
-          break;
-        default:
-          errorMessage = 'Registration failed. Please try again.';
-      }
+      return AuthResponse(
+        statusCode: statusCode,
+        message: errorMessage,
+        accessToken: null,
+        refreshToken: null,
+        user: User(
+          userId: 0,
+          username: '',
+          email: '',
+          isAuthenticated: false,
+          roles: [],
+          refreshTokenExpiration: null,
+        ),
+      );
+    } catch (e) {
+      print('Registration error: $e');
+      return AuthResponse(
+        statusCode: 500,
+        message: 'Registration failed:  [31m${e.toString()} [0m',
+        accessToken: null,
+        refreshToken: null,
+        user: User(
+          userId: 0,
+          username: '',
+          email: '',
+          isAuthenticated: false,
+          roles: [],
+          refreshTokenExpiration: null,
+        ),
+      );
     }
-    
-    // Return an AuthResponse with error details instead of throwing
-    return AuthResponse(
-      statusCode: statusCode,
-      message: errorMessage,
-      accessToken: null,
-      refreshToken: null,
-      user: User(
-        userId: 0,
-        username: '',
-        email: '',
-        isAuthenticated: false,
-        roles: [],
-        refreshTokenExpiration: null,
-      ),
-    );
-  } catch (e) {
-    print('Registration error: $e');
-    
-    // Return an AuthResponse with generic error
-    return AuthResponse(
-      statusCode: 500,
-      message: 'Registration failed: ${e.toString()}',
-      accessToken: null,
-      refreshToken: null,
-      user: User(
-        userId: 0,
-        username: '',
-        email: '',
-        isAuthenticated: false,
-        roles: [],
-        refreshTokenExpiration: null,
-      ),
-    );
   }
-}
 
   Future<Map<String, dynamic>> logout() async {
     try {
