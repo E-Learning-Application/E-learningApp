@@ -11,12 +11,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SplashCubit extends Cubit<SplashState> {
-  final FlutterSecureStorage _secureStorage; // Remove const
+  final FlutterSecureStorage _secureStorage; 
   final AuthService _authService;
 
   SplashCubit()
       : _secureStorage = const FlutterSecureStorage(), // Initialize here
-        _authService = AuthService(apiConsumer: DioConsumer(dio: Dio())),
+        _authService = AuthService(dioConsumer: DioConsumer(dio: Dio())),
         super(SplashState.initial());
 
   void initialize(TickerProvider vsync) {

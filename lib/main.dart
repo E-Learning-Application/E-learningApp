@@ -17,8 +17,7 @@ class LanguageLearningApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final apiConsumer = DioConsumer(dio: Dio());
-    final authService = AuthService(apiConsumer: apiConsumer);
+    final authService = AuthService(dioConsumer: DioConsumer(dio: Dio()));
 
     return MultiRepositoryProvider(
       providers: [

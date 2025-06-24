@@ -80,11 +80,11 @@ class _LoginViewState extends State<LoginView> {
                         Center(
                           child: Image.asset(
                             'assets/images/login.png',
-                            height: 180,
+                            height: 220,
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) {
                               return Container(
-                                height: 180,
+                                height: 220,
                                 width: 220,
                                 color: Colors.grey.shade100,
                                 child: const Icon(Icons.image,
@@ -171,6 +171,7 @@ class _LoginViewState extends State<LoginView> {
                             ),
                           ),
                         ),
+                        SizedBox(height: 5,),
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(

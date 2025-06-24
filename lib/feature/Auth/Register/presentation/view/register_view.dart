@@ -32,9 +32,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Create a local instance of RegisterCubit with the auth service
     return BlocProvider(
-      // Use context.read to safely access the AuthService
       create: (context) => RegisterCubit(
         authService: RepositoryProvider.of<AuthService>(context),
       ),
@@ -44,27 +42,22 @@ class _RegisterPageState extends State<RegisterPage> {
             // Show loading indicator
             _showLoadingDialog(context);
           } else if (state is RegisterSuccess) {
-            // Close loading dialog if open
             Navigator.of(context, rootNavigator: true).pop();
-            // Show success message
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.message),
                 backgroundColor: Colors.green,
               ),
             );
-            // Navigate to login after successful registration
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (context) => const LoginView(),
               ),
             );
           } else if (state is RegisterFailure) {
-            // Close loading dialog if open
             if (Navigator.of(context).canPop()) {
               Navigator.of(context, rootNavigator: true).pop();
             }
-            // Show error message
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.message),

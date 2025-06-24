@@ -18,41 +18,27 @@ class SettingsCubit extends Cubit<SettingsState> {
     emit(SettingsLogoutLoading());
     
     final result = await _authService.logout();
-    
-    // Treat statusCode 200 as success, regardless of 'success' field
+
     if (result['statusCode'] == 200) {
-      print('Logout completed: [32m${result['message']}[0m');
       emit(SettingsLogoutSuccess());
     } else {
       emit(SettingsLogoutFailure(error: result['message'] ?? 'Unknown error'));
     }
   } catch (e) {
-    print('Logout error in cubit: $e');
     emit(SettingsLogoutFailure(error: 'Logout failed. Please try again.'));
     
-    // Reset to loaded state after showing error
     await Future.delayed(const Duration(seconds: 2));
     emit(SettingsLoaded());
   }
 }
 
-  Future<void> navigateToPayment() async {
-    // TODO: Implement payment navigation
-  }
+  Future<void> navigateToPayment() async {}
 
-  Future<void> navigateToHistory() async {
-    // TODO: Implement history navigation
-  }
+  Future<void> navigateToHistory() async {}
 
-  Future<void> navigateToHelpCenter() async {
-    // TODO: Implement help center navigation
-  }
+  Future<void> navigateToHelpCenter() async {}
 
-  Future<void> navigateToContactUs() async {
-    // TODO: Implement contact us navigation
-  }
+  Future<void> navigateToContactUs() async {}
 
-  Future<void> navigateToChangePassword() async {
-    // TODO: Implement change password navigation
-  }
+  Future<void> navigateToChangePassword() async {}
 }

@@ -1,14 +1,14 @@
 import 'package:e_learning_app/core/model/user_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:e_learning_app/core/api/api_consumer.dart';
+import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
 import 'package:dio/dio.dart';
 
 class AuthService {
   final _secureStorage = const FlutterSecureStorage();
-  final ApiConsumer apiConsumer;
+  final DioConsumer dioConsumer;
 
-  AuthService({required this.apiConsumer});
+  AuthService({required this.dioConsumer});
 
   Future<bool> isUserAuthenticated() async {
     try {
@@ -83,8 +83,8 @@ class AuthService {
 
       print('Attempting to refresh token...');
       
-      final response = await apiConsumer.post(
-        EndPoint.refresh, // Remove baseUrl as it's already set in DioConsumer
+      final response = await dioConsumer.post(
+        EndPoint.refresh,
         data: {
           ApiKey.refreshToken: refreshToken,
         },
@@ -133,7 +133,7 @@ class AuthService {
 
   Future<AuthResponse> login(String usernameOrEmail, String password) async {
     try {
-      final response = await apiConsumer.post(
+      final response = await dioConsumer.post(
         EndPoint.login,
         data: {
           'usernameOrEmail': usernameOrEmail,
@@ -164,55 +164,28 @@ class AuthService {
       }
 
       return authResponse;
-    } on DioException catch (dioError) {
-      print('Dio error: [31m${dioError.type}\nStatus code: ${dioError.response?.statusCode}\nResponse data: ${dioError.response?.data}[0m');
+    } catch (e) {
+      print('Login error: $e');
+      
       String errorMessage = 'Login failed';
-      int statusCode = dioError.response?.statusCode ?? 500;
-      if (dioError.response?.data != null) {
-        try {
-          final errorData = dioError.response!.data;
-          if (errorData is Map<String, dynamic>) {
-            errorMessage = errorData['message'] ?? errorData['error'] ?? errorData['title'] ?? 'Login failed';
-          } else if (errorData is String) {
-            errorMessage = errorData;
-          }
-        } catch (e) {
-          print('Error parsing error response: $e');
-        }
+      int statusCode = 500;
+      
+      if (e.toString().contains('Invalid login data')) {
+        errorMessage = 'Invalid login data. Please check your input.';
+        statusCode = 400;
+      } else if (e.toString().contains('Unauthorized')) {
+        errorMessage = 'Unauthorized. Please check your credentials.';
+        statusCode = 401;
+      } else if (e.toString().contains('Server error')) {
+        errorMessage = 'Server error. Please try again later.';
+        statusCode = 500;
       } else {
-        switch (statusCode) {
-          case 400:
-            errorMessage = 'Invalid login data. Please check your input.';
-            break;
-          case 401:
-            errorMessage = 'Unauthorized. Please check your credentials.';
-            break;
-          case 500:
-            errorMessage = 'Server error. Please try again later.';
-            break;
-          default:
-            errorMessage = 'Login failed. Please try again.';
-        }
+        errorMessage = 'Login failed: ${e.toString()}';
       }
+      
       return AuthResponse(
         statusCode: statusCode,
         message: errorMessage,
-        accessToken: null,
-        refreshToken: null,
-        user: User(
-          userId: 0,
-          username: '',
-          email: '',
-          isAuthenticated: false,
-          roles: [],
-          refreshTokenExpiration: null,
-        ),
-      );
-    } catch (e) {
-      print('Login error: $e');
-      return AuthResponse(
-        statusCode: 500,
-        message: 'Login failed: [31m${e.toString()}[0m',
         accessToken: null,
         refreshToken: null,
         user: User(
@@ -230,7 +203,7 @@ class AuthService {
   Future<AuthResponse> register(String username, String email, String password,
       String confirmPassword) async {
     try {
-      final response = await apiConsumer.post(
+      final response = await dioConsumer.post(
         EndPoint.register,
         data: {
           ApiKey.username: username,
@@ -244,6 +217,7 @@ class AuthService {
           },
         ),
       );
+      
       if (response == null) {
         return AuthResponse(
           statusCode: 500,
@@ -256,61 +230,30 @@ class AuthService {
               roles: []),
         );
       }
+      
       return AuthResponse.fromJson(response);
-    } on DioException catch (dioError) {
-      print(
-          'Dio error:  [31m${dioError.type}\nStatus code: ${dioError.response?.statusCode}\nResponse data: ${dioError.response?.data} [0m');
+    } catch (e) {
+      print('Registration error: $e');
+      
       String errorMessage = 'Registration failed';
-      int statusCode = dioError.response?.statusCode ?? 500;
-      if (dioError.response?.data != null) {
-        try {
-          final errorData = dioError.response!.data;
-          if (errorData is Map<String, dynamic>) {
-            errorMessage = errorData['message'] ??
-                errorData['error'] ??
-                errorData['title'] ??
-                'Registration failed';
-          } else if (errorData is String) {
-            errorMessage = errorData;
-          }
-        } catch (e) {
-          print('Error parsing error response: $e');
-        }
+      int statusCode = 500;
+      
+      if (e.toString().contains('Invalid registration data')) {
+        errorMessage = 'Invalid registration data. Please check your input.';
+        statusCode = 400;
+      } else if (e.toString().contains('Username or email already exists')) {
+        errorMessage = 'Username or email already exists.';
+        statusCode = 409;
+      } else if (e.toString().contains('Server error')) {
+        errorMessage = 'Server error. Please try again later.';
+        statusCode = 500;
       } else {
-        switch (statusCode) {
-          case 400:
-            errorMessage =
-                'Invalid registration data. Please check your input.';
-            break;
-          case 409:
-            errorMessage = 'Username or email already exists.';
-            break;
-          case 500:
-            errorMessage = 'Server error. Please try again later.';
-            break;
-          default:
-            errorMessage = 'Registration failed. Please try again.';
-        }
+        errorMessage = 'Registration failed: ${e.toString()}';
       }
+      
       return AuthResponse(
         statusCode: statusCode,
         message: errorMessage,
-        accessToken: null,
-        refreshToken: null,
-        user: User(
-          userId: 0,
-          username: '',
-          email: '',
-          isAuthenticated: false,
-          roles: [],
-          refreshTokenExpiration: null,
-        ),
-      );
-    } catch (e) {
-      print('Registration error: $e');
-      return AuthResponse(
-        statusCode: 500,
-        message: 'Registration failed:  [31m${e.toString()} [0m',
         accessToken: null,
         refreshToken: null,
         user: User(
@@ -332,8 +275,7 @@ class AuthService {
 
       if (refreshToken != null && accessToken != null) {
         try {
-          // Make the API call with both authorization header and refresh token in body
-          final response = await apiConsumer.post(
+          final response = await dioConsumer.post(
             EndPoint.logout,
             data: {
               ApiKey.refreshToken: refreshToken,
@@ -346,14 +288,11 @@ class AuthService {
             ),
           );
 
-          // Clear local storage regardless of API response
           await _clearLocalStorage();
 
-          // Handle the response based on its type
           if (response is Map<String, dynamic>) {
             return response;
           } else if (response is String) {
-            // If response is a string, parse it or create a proper response
             return {
               'success': true,
               'message': 'Logged out successfully',
@@ -367,11 +306,9 @@ class AuthService {
             };
           }
         } catch (apiError) {
-          // If API call fails, still clear local storage
           print('API logout failed: $apiError');
           await _clearLocalStorage();
           
-          // Return success since local cleanup is what matters most
           return {
             'success': true,
             'message': 'Logged out locally (API call failed)',
@@ -379,7 +316,6 @@ class AuthService {
           };
         }
       } else {
-        // No tokens found, just clear any remaining data
         await _clearLocalStorage();
         return {
           'success': true,
@@ -389,7 +325,6 @@ class AuthService {
       }
     } catch (e) {
       print('Error during logout: $e');
-      // Ensure local storage is cleared even if there's an error
       await _clearLocalStorage();
       throw Exception('Failed to logout: $e');
     }
@@ -406,7 +341,7 @@ class AuthService {
 
   Future<Map<String, dynamic>> registerAdmin(int userId) async {
     try {
-      final response = await apiConsumer.post(
+      final response = await dioConsumer.post(
         EndPoint.registerAdmin,
         data: {
           ApiKey.userId: userId,
@@ -442,7 +377,7 @@ class AuthService {
         isAuthenticated: true,
         roles: [
           'User'
-        ], // Default role, you might want to store and retrieve actual roles
+        ],
         refreshTokenExpiration: null,
       );
     } catch (e) {
@@ -495,10 +430,8 @@ class AuthService {
     }
   }
 
-  // New method to check and refresh token proactively
   Future<bool> validateAndRefreshTokenIfNeeded() async {
     try {
-      // First check if we have tokens
       final accessToken = await getAccessToken();
       final refreshToken = await getRefreshToken();
       
@@ -507,7 +440,6 @@ class AuthService {
         return false;
       }
 
-      // Check if access token is still valid
       final isAuthenticated = await isUserAuthenticated();
       
       if (!isAuthenticated) {
@@ -515,7 +447,6 @@ class AuthService {
         return await refreshTokenIfNeeded();
       }
 
-      // Check if we should proactively refresh the token
       final shouldRefresh = await shouldRefreshToken();
       
       if (shouldRefresh) {

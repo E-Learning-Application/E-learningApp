@@ -40,20 +40,18 @@ class RegisterCubit extends Cubit<RegisterState> {
       confirmPassword,
     );
     
-    // Handle both success (201) and created (200) status codes
     if (response.statusCode == 201 || response.statusCode == 200) {
       emit(RegisterSuccess(
         user: response.user,
-        message: response.message ?? 'Registration successful!',
+        message: response.message,
       ));
     } else {
       // Handle error status codes
       emit(RegisterFailure(
-        message: response.message ?? 'Registration failed. Please try again.',
+        message: response.message,
       ));
     }
   } catch (e) {
-    print('Register cubit error: $e');
     emit(RegisterFailure(message: 'Registration failed: ${e.toString()}'));
   }
 }

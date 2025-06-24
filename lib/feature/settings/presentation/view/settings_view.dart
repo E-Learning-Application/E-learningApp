@@ -36,6 +36,7 @@ class SettingsView extends StatelessWidget {
           );
           
           Future.delayed(const Duration(), () {
+            // ignore: use_build_context_synchronously
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
                 builder: (context) => const LoginView(), 

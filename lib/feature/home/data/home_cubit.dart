@@ -1,4 +1,3 @@
-// auth_cubit.dart
 import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/feature/home/data/home_state.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,16 +10,13 @@ class AuthCubit extends Cubit<AuthState> {
       : _authService = authService,
         super(const AuthInitial());
 
-  /// Check initial authentication status when app starts
   Future<void> checkAuthStatus() async {
     try {
       emit(const AuthLoading());
 
-      // Check if user is authenticated
       final isAuthenticated = await _authService.isUserAuthenticated();
 
       if (!isAuthenticated) {
-        // Try to refresh token if available
         final refreshSuccess = await _authService.refreshTokenIfNeeded();
         
         if (!refreshSuccess) {
@@ -29,7 +25,6 @@ class AuthCubit extends Cubit<AuthState> {
         }
       }
 
-      // Get current user and access token
       final user = await _authService.getCurrentUser();
       final accessToken = await _authService.getAccessToken();
 
@@ -43,7 +38,6 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  /// Refresh access token using refresh token
   Future<void> refreshToken() async {
     try {
       emit(const AuthLoading());
@@ -67,14 +61,11 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  /// Validate current token and refresh if needed
   Future<void> validateAndRefreshToken() async {
     try {
-      // First check if user is currently authenticated
       final isAuthenticated = await _authService.isUserAuthenticated();
 
       if (!isAuthenticated) {
-        // Try to refresh token
         final refreshSuccess = await _authService.refreshTokenIfNeeded();
         
         if (!refreshSuccess) {
@@ -82,7 +73,6 @@ class AuthCubit extends Cubit<AuthState> {
           return;
         }
 
-        // After successful refresh, get updated user info
         final user = await _authService.getCurrentUser();
         final accessToken = await _authService.getAccessToken();
 
@@ -92,7 +82,6 @@ class AuthCubit extends Cubit<AuthState> {
           emit(const AuthTokenExpired());
         }
       } else {
-        // Token is still valid, just emit current state
         final user = await _authService.getCurrentUser();
         final accessToken = await _authService.getAccessToken();
 
@@ -107,36 +96,10 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  /// Logout user
-  Future<void> logout() async {
-    try {
-      emit(const AuthLoading());
-      
-      await _authService.logout();
-      emit(const AuthUnauthenticated());
-    } catch (e) {
-      // Even if logout fails, clear local data and move to unauthenticated state
-      await _authService.clearAuthenticationData();
-      emit(const AuthUnauthenticated());
-    }
-  }
-
-  /// Clear authentication data without API call
-  Future<void> clearAuth() async {
-    try {
-      await _authService.clearAuthenticationData();
-      emit(const AuthUnauthenticated());
-    } catch (e) {
-      emit(const AuthUnauthenticated());
-    }
-  }
-
-  /// Set authenticated state after successful login (to be called from login flow)
   void setAuthenticated(User user, String accessToken) {
     emit(AuthAuthenticated(user: user, accessToken: accessToken));
   }
 
-  /// Get current user if authenticated
   User? get currentUser {
     final currentState = state;
     if (currentState is AuthAuthenticated) {
@@ -145,12 +108,10 @@ class AuthCubit extends Cubit<AuthState> {
     return null;
   }
 
-  /// Check if user is currently authenticated
   bool get isAuthenticated {
     return state is AuthAuthenticated;
   }
 
-  /// Check if current user has specific role
   Future<bool> hasRole(String role) async {
     try {
       return await _authService.hasRole(role);
@@ -159,7 +120,6 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  /// Check if current user is admin
   Future<bool> isAdmin() async {
     try {
       return await _authService.isAdmin();

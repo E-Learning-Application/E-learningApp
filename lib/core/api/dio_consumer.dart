@@ -6,7 +6,7 @@ import 'package:e_learning_app/core/errors/exceptions.dart';
 
 class DioConsumer extends ApiConsumer {
   final Dio dio;
-
+  
   DioConsumer({required this.dio}) {
     dio.options.baseUrl = EndPoint.baseUrl;
     dio.options.connectTimeout = const Duration(seconds: 30);
@@ -14,7 +14,6 @@ class DioConsumer extends ApiConsumer {
     dio.options.validateStatus = (status) {
       return status != null && status < 500;
     };
-
     dio.interceptors.add(ApiInterceptor());
     dio.interceptors.add(LogInterceptor(
       request: true,
@@ -39,6 +38,7 @@ class DioConsumer extends ApiConsumer {
         path,
         data: isFromData ? FormData.fromMap(data) : data,
         queryParameters: queryParameters,
+        options: options,
       );
       return response.data;
     } on DioException catch (e) {
@@ -60,6 +60,7 @@ class DioConsumer extends ApiConsumer {
         path,
         data: data,
         queryParameters: queryParameters,
+        options: options,
       );
       return response.data;
     } on DioException catch (e) {
@@ -70,28 +71,27 @@ class DioConsumer extends ApiConsumer {
   }
 
   @override
-Future put(
-  String path, {
-  dynamic data,
-  Map<String, dynamic>? queryParameters,
-  Options? options,
-  bool isFromData = false,
-}) async {
-  try {
-    final response = await dio.put(
-      path,
-      data: isFromData ? FormData.fromMap(data) : data,
-      queryParameters: queryParameters,
-      options: options,
-    );
-    return response.data;
-  } on DioException catch (e) {
-    handleDioExceptions(e);
-  } catch (e) {
-    rethrow;
+  Future put(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    bool isFromData = false,
+  }) async {
+    try {
+      final response = await dio.put(
+        path,
+        data: isFromData ? FormData.fromMap(data) : data,
+        queryParameters: queryParameters,
+        options: options,
+      );
+      return response.data;
+    } on DioException catch (e) {
+      handleDioExceptions(e);
+    } catch (e) {
+      rethrow;
+    }
   }
-}
-
 
   @override
   Future patch(
@@ -106,6 +106,7 @@ Future put(
         path,
         data: isFromData ? FormData.fromMap(data) : data,
         queryParameters: queryParameters,
+        options: options,
       );
       return response.data;
     } on DioException catch (e) {
@@ -127,7 +128,7 @@ Future put(
       // Debug info
       print("POST DATA TYPE: ${data.runtimeType}");
       print("IS FROM DATA: $isFromData");
-
+      
       dynamic finalData;
       if (data is FormData) {
         finalData = data;
