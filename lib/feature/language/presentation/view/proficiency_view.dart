@@ -25,27 +25,12 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Status bar mock
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('9:41', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                    Row(
-                      children: [
-                        Icon(Icons.signal_cellular_4_bar, size: 17),
-                        SizedBox(width: 5),
-                        Icon(Icons.wifi, size: 17),
-                        SizedBox(width: 5),
-                        Icon(Icons.battery_full, size: 24),
-                      ],
-                    ),
-                  ],
-                ),
-                SizedBox(height: 40),
+                
+                SizedBox(height: 20),
                 
                 // Title
                 Text(
-                  'how good you are?',
+                  'How good you are?',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
@@ -93,7 +78,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
                 
                 // Topics section
                 Text(
-                  'topics you interest in?',
+                  'Topics you interest in?',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
@@ -179,8 +164,8 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
         });
       },
       child: Container(
-        height: 100,
-        padding: EdgeInsets.all(16),
+        height: 110,
+        padding: EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(
@@ -203,7 +188,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
             Text(
               level,
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: Colors.black87,
               ),

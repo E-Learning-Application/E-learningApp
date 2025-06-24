@@ -23,7 +23,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 40),
+                SizedBox(height: 20),
                 
                 Text(
                   'Choose the language you\nwant to learn',

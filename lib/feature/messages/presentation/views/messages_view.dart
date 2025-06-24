@@ -10,7 +10,7 @@ class MessagesScreen extends StatefulWidget {
 
 class _MessagesScreenState extends State<MessagesScreen> {
   // Toggle this to switch between empty and filled chat list
-  bool _hasChats = false;
+  bool _hasChats = true;
 
   @override
   Widget build(BuildContext context) {

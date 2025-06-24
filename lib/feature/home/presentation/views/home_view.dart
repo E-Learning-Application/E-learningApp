@@ -1,5 +1,6 @@
 import 'package:e_learning_app/feature/home/data/home_cubit.dart';
 import 'package:e_learning_app/feature/home/data/home_state.dart';
+import 'package:e_learning_app/feature/language/presentation/view/language_view.dart';
 import 'package:e_learning_app/feature/messages/presentation/views/messages_view.dart';
 import 'package:e_learning_app/feature/profile/presentation/views/profile_view.dart';
 import 'package:e_learning_app/feature/settings/presentation/view/settings_view.dart';
@@ -45,7 +46,6 @@ class _AppContainerState extends State<AppContainer>
   }
 
   void _startTokenValidation() {
-    // Check token every 5 minutes
     _tokenCheckTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
       if (mounted && !_isCheckingToken) {
         _validateToken();
@@ -63,7 +63,6 @@ class _AppContainerState extends State<AppContainer>
     try {
       final authCubit = context.read<AuthCubit>();
       
-      // Only validate if user is currently authenticated
       if (authCubit.isAuthenticated) {
         await authCubit.validateAndRefreshToken();
       }
@@ -128,16 +127,12 @@ class _AppContainerState extends State<AppContainer>
             ),
           );
           
-          // Reset to home page
           setState(() {
             _currentIndex = 0;
           });
           
-          // Navigate to login screen (you'll need to implement this)
-          // Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
           
         } else if (state is AuthUnauthenticated) {
-          // User logged out - reset to home page
           setState(() {
             _currentIndex = 0;
           });
@@ -157,7 +152,6 @@ class _AppContainerState extends State<AppContainer>
           children: [
             _pages[_currentIndex],
             
-            // Show loading indicator when checking token
             if (_isCheckingToken)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 10,
@@ -247,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
               BlocBuilder<AuthCubit, AuthState>(
                 builder: (context, state) {
                   String userName = 'User';
-                  bool isAuthenticated = false;
+                  bool isAuthenticated = true;
 
                   if (state is AuthAuthenticated) {
                     userName = state.user.username;
@@ -286,21 +280,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       GestureDetector(
                         onTap: () {
-                          // Validate token when user taps profile
                           if (isAuthenticated) {
                             context.read<AuthCubit>().validateAndRefreshToken();
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => LanguageSelectionPage(),));
                           }
                         },
                         child: Container(
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: isAuthenticated ? Colors.amber[200] : Colors.grey[400],
+                            color: isAuthenticated ? Colors.grey[800] : Colors.grey[400],
                             shape: BoxShape.circle,
                           ),
                           child: Center(
                             child: Icon(
-                              Icons.person,
+                              Icons.language,
                               color: Colors.white,
                             ),
                           ),
