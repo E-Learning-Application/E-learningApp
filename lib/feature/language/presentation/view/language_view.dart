@@ -1,4 +1,4 @@
-import 'package:e_learning_app/feature/Auth/Register/presentation/view/proficiency_view.dart';
+import 'package:e_learning_app/feature/language/presentation/view/proficiency_view.dart';
 import 'package:flutter/material.dart';
 
 class LanguageSelectionPage extends StatefulWidget {

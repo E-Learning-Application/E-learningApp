@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:e_learning_app/feature/onboarding/data/onboarding_cubit.dart';
-import 'package:e_learning_app/feature/onboarding/data/onboarding_state.dart';
 import 'package:e_learning_app/feature/onboarding/presentation/widgets/onboarding_page.dart';
 
 class OnboardingView extends StatelessWidget {
@@ -58,16 +57,19 @@ class OnboardingViewBody extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // Skip button
                       TextButton(
-                        onPressed: () => cubit.skip(context),
+                        onPressed: state.isLoading ? null : () => cubit.skip(context),
                         child: Text(
                           state.currentPage == 2 ? "" : "Skip",
                           style: TextStyle(
-                            color: Colors.grey[700],
+                            color: state.isLoading ? Colors.grey[400] : Colors.grey[700],
                             fontSize: 16,
                           ),
                         ),
                       ),
+                      
+                      // Page indicator
                       SmoothPageIndicator(
                         controller: cubit.pageController,
                         count: 3,
@@ -80,16 +82,29 @@ class OnboardingViewBody extends StatelessWidget {
                           expansionFactor: 3,
                         ),
                       ),
+                      
+                      // Next/Let's Start button
                       TextButton(
-                        onPressed: () => cubit.next(context),
-                        child: Text(
-                          state.currentPage == 2 ? "Let's Start!" : "Next",
-                          style: TextStyle(
-                            color: const Color(0xFF2D3142),
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        onPressed: state.isLoading ? null : () => cubit.next(context),
+                        child: state.isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Color(0xFF2D3142),
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                state.currentPage == 2 ? "Let's Start!" : "Next",
+                                style: TextStyle(
+                                  color: const Color(0xFF2D3142),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                     ],
                   ),

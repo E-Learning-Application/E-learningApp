@@ -19,9 +19,9 @@ class SettingsCubit extends Cubit<SettingsState> {
     
     final result = await _authService.logout();
     
-    // Check if logout was successful
-    if (result['success'] == true) {
-      print('Logout completed: ${result['message']}');
+    // Treat statusCode 200 as success, regardless of 'success' field
+    if (result['statusCode'] == 200) {
+      print('Logout completed: [32m${result['message']}[0m');
       emit(SettingsLogoutSuccess());
     } else {
       emit(SettingsLogoutFailure(error: result['message'] ?? 'Unknown error'));

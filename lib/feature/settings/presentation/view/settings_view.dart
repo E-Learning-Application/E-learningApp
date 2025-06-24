@@ -27,18 +27,29 @@ class SettingsView extends StatelessWidget {
     return BlocListener<SettingsCubit, SettingsState>(
       listener: (context, state) {
         if (state is SettingsLogoutSuccess) {
-          // Navigate to login screen or home screen
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const LoginView(), // Replace with your login view
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Logged out successfully'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
             ),
           );
+          
+          Future.delayed(const Duration(), () {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (context) => const LoginView(), 
+              ),
+              (route) => false, // Remove all previous routes
+            );
+          });
         } else if (state is SettingsLogoutFailure) {
-          // Show error message
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Logout failed: ${state.error}'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
             ),
           );
         }

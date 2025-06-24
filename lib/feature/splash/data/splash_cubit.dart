@@ -1,3 +1,4 @@
+// Updated splash_cubit.dart
 import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
@@ -10,10 +11,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SplashCubit extends Cubit<SplashState> {
-  final _secureStorage = const FlutterSecureStorage();
-  final _authService = AuthService(apiConsumer: DioConsumer(dio: Dio()));
+  final FlutterSecureStorage _secureStorage; // Remove const
+  final AuthService _authService;
 
-  SplashCubit() : super(SplashState.initial());
+  SplashCubit()
+      : _secureStorage = const FlutterSecureStorage(), // Initialize here
+        _authService = AuthService(apiConsumer: DioConsumer(dio: Dio())),
+        super(SplashState.initial());
 
   void initialize(TickerProvider vsync) {
     _initAnimations(vsync);
@@ -62,8 +66,8 @@ class SplashCubit extends Cubit<SplashState> {
     await Future.delayed(const Duration(milliseconds: 5000));
 
     try {
-      final seenOnboarding =
-          await _secureStorage.read(key: 'seenOnboarding') == 'true';
+      final seenOnboardingValue = await _secureStorage.read(key: 'seenOnboarding');
+      final seenOnboarding = seenOnboardingValue == 'true';
       final isAuthenticated = await _authService.isUserAuthenticated();
 
       Widget destination;

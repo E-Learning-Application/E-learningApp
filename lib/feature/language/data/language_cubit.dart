@@ -1,5 +1,5 @@
 import 'package:e_learning_app/core/service/language_service.dart';
-import 'package:e_learning_app/feature/Auth/Register/data/language_state.dart';
+import 'package:e_learning_app/feature/language/data/language_state.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class LanguageCubit extends Cubit<LanguageState> {
