@@ -1,5 +1,5 @@
-import 'package:e_learning_app/feature/home/data/home_cubit.dart';
-import 'package:e_learning_app/feature/home/data/home_state.dart';
+import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
+import 'package:e_learning_app/feature/Auth/data/auth_state.dart';
 import 'package:e_learning_app/feature/language/presentation/view/language_view.dart';
 import 'package:e_learning_app/feature/messages/presentation/views/messages_view.dart';
 import 'package:e_learning_app/feature/profile/presentation/views/profile_view.dart';
@@ -20,6 +20,7 @@ class _AppContainerState extends State<AppContainer>
   int _currentIndex = 0;
   Timer? _tokenCheckTimer;
   bool _isCheckingToken = false;
+  bool _hasInitialized = false; // Add this flag
 
   final List<Widget> _pages = [
     const HomeScreen(),
@@ -32,9 +33,19 @@ class _AppContainerState extends State<AppContainer>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _startTokenValidation();
+
+    // Only check auth status if we haven't initialized and user isn't already authenticated
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _validateToken();
+      final authCubit = context.read<AuthCubit>();
+      final currentState = authCubit.state;
+
+      // If user is already authenticated (coming from login), just start validation
+      if (currentState is AuthAuthenticated || currentState is LoginSuccess) {
+        _hasInitialized = true;
+        _startTokenValidation();
+      } else if (!_hasInitialized) {
+        _initialAuthCheck();
+      }
     });
   }
 
@@ -45,7 +56,24 @@ class _AppContainerState extends State<AppContainer>
     super.dispose();
   }
 
+  Future<void> _initialAuthCheck() async {
+    if (_hasInitialized) return; // Prevent multiple initialization
+
+    _hasInitialized = true;
+    final authCubit = context.read<AuthCubit>();
+
+    // Only check auth status if user is not already authenticated
+    final currentState = authCubit.state;
+    if (currentState is! AuthAuthenticated && currentState is! LoginSuccess) {
+      await authCubit.checkAuthStatus();
+    }
+
+    // Start periodic validation
+    _startTokenValidation();
+  }
+
   void _startTokenValidation() {
+    _tokenCheckTimer?.cancel(); // Cancel any existing timer
     _tokenCheckTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
       if (mounted && !_isCheckingToken) {
         _validateToken();
@@ -55,19 +83,20 @@ class _AppContainerState extends State<AppContainer>
 
   Future<void> _validateToken() async {
     if (_isCheckingToken) return;
-    
+
     setState(() {
       _isCheckingToken = true;
     });
 
     try {
       final authCubit = context.read<AuthCubit>();
-      
+
       if (authCubit.isAuthenticated) {
         await authCubit.validateAndRefreshToken();
       }
     } catch (e) {
       print('Error during token validation: $e');
+      // Don't show error to user for background validation
     } finally {
       if (mounted) {
         setState(() {
@@ -84,8 +113,10 @@ class _AppContainerState extends State<AppContainer>
     switch (state) {
       case AppLifecycleState.resumed:
         // App came back to foreground - validate token
-        _validateToken();
-        
+        if (context.read<AuthCubit>().isAuthenticated) {
+          _validateToken();
+        }
+
         // Restart periodic timer if it was cancelled
         if (_tokenCheckTimer?.isActive != true) {
           _startTokenValidation();
@@ -103,61 +134,83 @@ class _AppContainerState extends State<AppContainer>
   }
 
   void _onPageChanged(int index) {
-    // Validate token before changing page
-    if (context.read<AuthCubit>().isAuthenticated) {
-      _validateToken();
-    }
-    
     setState(() {
       _currentIndex = index;
     });
+
+    // Optional: Validate token when switching to sensitive pages
+    final authCubit = context.read<AuthCubit>();
+    if (authCubit.isAuthenticated && (index == 2 || index == 3)) {
+      // Settings or Profile
+      _validateToken();
+    }
+  }
+
+  void _handleAuthStateChange(AuthState state) {
+    // Handle LoginSuccess by converting to AuthAuthenticated
+    if (state is LoginSuccess) {
+      // Don't show snackbar here as it's already handled in LoginView
+      // Just ensure the user state is properly set
+      context.read<AuthCubit>().setAuthenticated(state.user, state.accessToken);
+      return;
+    }
+
+    if (state is AuthTokenExpired) {
+      // Token expired - show snackbar and redirect to login
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message ?? 'Session expired'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'Login',
+            textColor: Colors.white,
+            onPressed: () {
+              // Navigate to login page
+              // Navigator.pushReplacementNamed(context, '/login');
+            },
+          ),
+        ),
+      );
+
+      // Reset to home page
+      setState(() {
+        _currentIndex = 0;
+      });
+    } else if (state is AuthUnauthenticated) {
+      // User logged out or session ended
+      setState(() {
+        _currentIndex = 0;
+      });
+    } else if (state is AuthError) {
+      // Show error message only if it's not a background validation error
+      if (!_isCheckingToken) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(state.message),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthCubit, AuthState>(
-      listener: (context, state) {
-        if (state is AuthTokenExpired) {
-          // Token expired - show snackbar and redirect to login
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-          
-          setState(() {
-            _currentIndex = 0;
-          });
-          
-          
-        } else if (state is AuthUnauthenticated) {
-          setState(() {
-            _currentIndex = 0;
-          });
-        } else if (state is AuthError) {
-          // Show error message
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      },
+      listener: (context, state) => _handleAuthStateChange(state),
       child: Scaffold(
         body: Stack(
           children: [
             _pages[_currentIndex],
-            
             if (_isCheckingToken)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 10,
                 right: 16,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(20),
@@ -241,9 +294,13 @@ class _HomeScreenState extends State<HomeScreen> {
               BlocBuilder<AuthCubit, AuthState>(
                 builder: (context, state) {
                   String userName = 'User';
-                  bool isAuthenticated = true;
+                  bool isAuthenticated = false;
 
+                  // Handle both AuthAuthenticated and LoginSuccess states
                   if (state is AuthAuthenticated) {
+                    userName = state.user.username;
+                    isAuthenticated = true;
+                  } else if (state is LoginSuccess) {
                     userName = state.user.username;
                     isAuthenticated = true;
                   }
@@ -268,7 +325,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 24,
                             ),
                           ),
-                          if (state is AuthLoading)
+                          if (state is AuthLoading || state is LoginLoading)
                             const Text(
                               'Syncing...',
                               style: TextStyle(
@@ -279,17 +336,40 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                       GestureDetector(
-                        onTap: () {
+                        onTap: () async {
                           if (isAuthenticated) {
-                            context.read<AuthCubit>().validateAndRefreshToken();
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => LanguageSelectionPage(),));
+                            // Validate token before navigation
+                            await context
+                                .read<AuthCubit>()
+                                .validateAndRefreshToken();
+
+                            if (mounted &&
+                                context.read<AuthCubit>().isAuthenticated) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => LanguageSelectionPage(),
+                                ),
+                              );
+                            }
+                          } else {
+                            // Navigate to login if not authenticated
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Please login to access language settings'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
                           }
                         },
                         child: Container(
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: isAuthenticated ? Colors.grey[800] : Colors.grey[400],
+                            color: isAuthenticated
+                                ? Colors.grey[800]
+                                : Colors.grey[400],
                             shape: BoxShape.circle,
                           ),
                           child: Center(
@@ -338,35 +418,69 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _handleFeatureAccess(BuildContext context, String feature) async {
     final authCubit = context.read<AuthCubit>();
-    
+
     // Check if user is authenticated
     if (!authCubit.isAuthenticated) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please login to access this feature'),
+        SnackBar(
+          content: const Text('Please login to access this feature'),
           backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'Login',
+            onPressed: () {
+              // Navigate to login page
+              // Navigator.pushNamed(context, '/login');
+            },
+          ),
         ),
       );
       return;
     }
 
-    // Validate token before accessing features
-    await authCubit.validateAndRefreshToken();
-    
-    // Check state after validation
-    final currentState = authCubit.state;
-    if (currentState is AuthAuthenticated) {
+    // Show loading state
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Accessing $feature...'),
+        duration: const Duration(seconds: 1),
+        backgroundColor: Colors.blue,
+      ),
+    );
+
+    try {
+      // Validate token before accessing features
+      await authCubit.validateAndRefreshToken();
+
+      // Check state after validation
+      if (!mounted) return;
+
+      final currentState = authCubit.state;
+      if (currentState is AuthAuthenticated) {
+        // Hide loading snackbar
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+        // Show success and navigate to feature
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$feature ready!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // TODO: Navigate to actual feature page
+        // Navigator.pushNamed(context, '/${feature.toLowerCase().replaceAll(' ', '_')}');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please login again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$feature feature accessed'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.green,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Session expired. Please login again.'),
+          content: Text('Failed to access $feature. Please try again.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -387,6 +501,13 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -405,6 +526,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   fontWeight: FontWeight.w500,
                   fontSize: 18,
                 ),
+              ),
+              const Spacer(),
+              const Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.white70,
+                size: 16,
               ),
             ],
           ),

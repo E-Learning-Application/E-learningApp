@@ -2,7 +2,7 @@
 import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
-import 'package:e_learning_app/feature/auth/login/presentation/views/login_view.dart';
+import 'package:e_learning_app/feature/Auth/presentation/login/views/login_view.dart';
 import 'package:e_learning_app/feature/home/presentation/views/home_view.dart';
 import 'package:e_learning_app/feature/onboarding/presentation/view/onboarding_screen.dart';
 import 'package:e_learning_app/feature/splash/data/splash_state.dart';
@@ -11,7 +11,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SplashCubit extends Cubit<SplashState> {
-  final FlutterSecureStorage _secureStorage; 
+  final FlutterSecureStorage _secureStorage;
   final AuthService _authService;
 
   SplashCubit()
@@ -66,7 +66,8 @@ class SplashCubit extends Cubit<SplashState> {
     await Future.delayed(const Duration(milliseconds: 5000));
 
     try {
-      final seenOnboardingValue = await _secureStorage.read(key: 'seenOnboarding');
+      final seenOnboardingValue =
+          await _secureStorage.read(key: 'seenOnboarding');
       final seenOnboarding = seenOnboardingValue == 'true';
       final isAuthenticated = await _authService.isUserAuthenticated();
 

@@ -2,9 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/core/service/language_service.dart';
-import 'package:e_learning_app/feature/auth/Register/data/register_cubit.dart';
-import 'package:e_learning_app/feature/auth/login/data/login_cubit.dart';
-import 'package:e_learning_app/feature/home/data/home_cubit.dart';
+import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/language/data/language_cubit.dart';
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
@@ -27,16 +25,6 @@ class LanguageLearningApp extends StatelessWidget {
       ],
       child: MultiBlocProvider(
         providers: [
-          BlocProvider(
-            create: (context) => LoginCubit(
-              authService: context.read<AuthService>(),
-            ),
-          ),
-          BlocProvider(
-            create: (context) => RegisterCubit(
-              authService: context.read<AuthService>(),
-            ),
-          ),
           BlocProvider(
             create: (context) => AuthCubit(
               authService: context.read<AuthService>(),

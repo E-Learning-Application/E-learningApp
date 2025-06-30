@@ -1,5 +1,5 @@
 import 'package:e_learning_app/core/service/auth_service.dart';
-import 'package:e_learning_app/feature/Auth/login/presentation/views/login_view.dart';
+import 'package:e_learning_app/feature/Auth/presentation/login/views/login_view.dart';
 import 'package:e_learning_app/feature/settings/data/settings_cubit.dart';
 import 'package:e_learning_app/feature/settings/data/settings_state.dart';
 import 'package:flutter/material.dart';
@@ -34,18 +34,17 @@ class SettingsView extends StatelessWidget {
               duration: Duration(seconds: 2),
             ),
           );
-          
+
           Future.delayed(const Duration(), () {
             // ignore: use_build_context_synchronously
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
-                builder: (context) => const LoginView(), 
+                builder: (context) => const LoginView(),
               ),
               (route) => false, // Remove all previous routes
             );
           });
         } else if (state is SettingsLogoutFailure) {
-
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Logout failed: ${state.error}'),
@@ -64,7 +63,8 @@ class SettingsView extends StatelessWidget {
                 children: [
                   // App Bar
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
                     child: Text(
                       'Settings',
                       style: TextStyle(
@@ -79,19 +79,22 @@ class SettingsView extends StatelessWidget {
                     context: context,
                     title: 'Payment',
                     icon: Icons.payment,
-                    onTap: () => context.read<SettingsCubit>().navigateToPayment(),
+                    onTap: () =>
+                        context.read<SettingsCubit>().navigateToPayment(),
                   ),
 
                   _buildSettingSection(
                     context: context,
                     title: 'History',
                     icon: Icons.history,
-                    onTap: () => context.read<SettingsCubit>().navigateToHistory(),
+                    onTap: () =>
+                        context.read<SettingsCubit>().navigateToHistory(),
                   ),
 
                   // Support Section Header
                   Padding(
-                    padding: const EdgeInsets.only(left: 16.0, top: 24.0, bottom: 8.0),
+                    padding: const EdgeInsets.only(
+                        left: 16.0, top: 24.0, bottom: 8.0),
                     child: Text(
                       'Support',
                       style: TextStyle(
@@ -105,20 +108,23 @@ class SettingsView extends StatelessWidget {
                     context: context,
                     title: 'Help Center',
                     icon: Icons.help_outline,
-                    onTap: () => context.read<SettingsCubit>().navigateToHelpCenter(),
+                    onTap: () =>
+                        context.read<SettingsCubit>().navigateToHelpCenter(),
                   ),
 
                   _buildSettingSection(
                     context: context,
                     title: 'Contact us',
                     icon: Icons.mail_outline,
-                    onTap: () => context.read<SettingsCubit>().navigateToContactUs(),
+                    onTap: () =>
+                        context.read<SettingsCubit>().navigateToContactUs(),
                     hasExternalLink: true,
                   ),
 
                   // Account Section Header
                   Padding(
-                    padding: const EdgeInsets.only(left: 16.0, top: 24.0, bottom: 8.0),
+                    padding: const EdgeInsets.only(
+                        left: 16.0, top: 24.0, bottom: 8.0),
                     child: Text(
                       'Account',
                       style: TextStyle(
@@ -132,7 +138,9 @@ class SettingsView extends StatelessWidget {
                     context: context,
                     title: 'Change password',
                     icon: Icons.lock_outline,
-                    onTap: () => context.read<SettingsCubit>().navigateToChangePassword(),
+                    onTap: () => context
+                        .read<SettingsCubit>()
+                        .navigateToChangePassword(),
                   ),
 
                   _buildSettingSection(

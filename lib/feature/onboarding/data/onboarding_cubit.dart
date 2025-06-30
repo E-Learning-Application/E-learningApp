@@ -1,7 +1,7 @@
+import 'package:e_learning_app/feature/Auth/presentation/login/views/login_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // Add this import
-import 'package:e_learning_app/feature/auth/login/presentation/views/login_view.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class OnboardingState {
   final int currentPage;
@@ -47,7 +47,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   void skip(BuildContext context) async {
     emit(state.copyWith(isLoading: true));
-    
+
     try {
       await _secureStorage.write(key: 'seenOnboarding', value: 'true');
       navigateToLogin(context);
@@ -70,7 +70,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   Future<void> completeOnboarding(BuildContext context) async {
     emit(state.copyWith(isLoading: true));
-    
+
     try {
       await _secureStorage.write(key: 'seenOnboarding', value: 'true');
       navigateToLogin(context);
