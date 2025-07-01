@@ -1,3 +1,5 @@
+import 'package:e_learning_app/core/model/language_model.dart';
+
 abstract class UserState {}
 
 class UserInitial extends UserState {}
@@ -50,46 +52,6 @@ class User {
               .map((e) => LanguagePreference.fromJson(e))
               .toList()
           : null,
-    );
-  }
-}
-
-class LanguagePreference {
-  final Language language;
-  final String proficiencyLevel;
-  final bool isLearning;
-
-  LanguagePreference({
-    required this.language,
-    required this.proficiencyLevel,
-    required this.isLearning,
-  });
-
-  factory LanguagePreference.fromJson(Map<String, dynamic> json) {
-    return LanguagePreference(
-      language: Language.fromJson(json['language']),
-      proficiencyLevel: json['proficiencyLevel'],
-      isLearning: json['isLearning'],
-    );
-  }
-}
-
-class Language {
-  final int id;
-  final String name;
-  final String code;
-
-  Language({
-    required this.id,
-    required this.name,
-    required this.code,
-  });
-
-  factory Language.fromJson(Map<String, dynamic> json) {
-    return Language(
-      id: json['id'],
-      name: json['name'],
-      code: json['code'],
     );
   }
 }

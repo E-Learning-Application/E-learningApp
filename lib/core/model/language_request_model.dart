@@ -7,6 +7,7 @@ class UpdateLanguagePreferenceRequest {
     required this.languageId,
     required this.proficiencyLevel,
     required this.isLearning,
+    required userId,
   });
 
   Map<String, dynamic> toJson() {

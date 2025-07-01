@@ -1,8 +1,9 @@
 import 'package:e_learning_app/feature/language/data/language_state.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-// Import your actual language service
 import 'package:e_learning_app/core/service/language_service.dart';
+import 'package:e_learning_app/core/model/language_model.dart';
+import 'package:e_learning_app/core/model/language_request_model.dart';
 
 class LanguageCubit extends Cubit<LanguageState> {
   final LanguageService languageService;
@@ -18,32 +19,29 @@ class LanguageCubit extends Cubit<LanguageState> {
     try {
       emit(LanguageLoading());
 
-      // Validate and refresh token if needed
       final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
-
       if (!isTokenValid) {
         emit(LanguageError(
             message: 'Authentication failed. Please login again.'));
         return;
       }
 
-      // Get the access token
       final accessToken = await authService.getAccessToken();
-
       if (accessToken == null || accessToken.isEmpty) {
         emit(LanguageError(
             message: 'No access token available. Please login again.'));
         return;
       }
 
-      // Call the language service with the access token
       final response =
           await languageService.getAllLanguages(accessToken: accessToken);
 
       if (response.statusCode == 200) {
-        emit(LanguageSuccess(languages: response.data));
+        final languages = (response.data as List)
+            .map((e) => Language.fromJson((e as dynamic).toJson()))
+            .toList();
+        emit(LanguageSuccess(languages: languages));
       } else {
-        // Handle specific authentication errors
         if (response.statusCode == 401) {
           emit(LanguageError(message: 'Session expired. Please login again.'));
         } else {
@@ -60,49 +58,43 @@ class LanguageCubit extends Cubit<LanguageState> {
     try {
       emit(LanguageLoading());
 
-      // Validate and refresh token if needed
       final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
-
       if (!isTokenValid) {
         emit(LanguageError(
             message: 'Authentication failed. Please login again.'));
         return;
       }
 
-      // Get the access token
       final accessToken = await authService.getAccessToken();
-
       if (accessToken == null || accessToken.isEmpty) {
         emit(LanguageError(
             message: 'No access token available. Please login again.'));
         return;
       }
 
-      // Get current user
       final currentUser = await authService.getCurrentUser();
-
       if (currentUser == null) {
         emit(LanguageError(message: 'User not found. Please login again.'));
         return;
       }
 
-      // Extract user ID with comprehensive error handling
       dynamic userId = _extractUserId(currentUser);
-
       if (userId == null) {
         emit(LanguageError(
             message: 'User ID not available. Please login again.'));
         return;
       }
 
-      // Call the language service to get user preferences
       final response = await languageService.getUserLanguagePreferences(
         userId,
         accessToken: accessToken,
       );
 
       if (response.statusCode == 200) {
-        emit(LanguagePreferencesSuccess(preferences: response.data));
+        final preferences = (response.data as List)
+            .map((e) => LanguagePreference.fromJson((e as dynamic).toJson()))
+            .toList();
+        emit(LanguagePreferencesSuccess(preferences: preferences));
       } else {
         if (response.statusCode == 401) {
           emit(LanguageError(message: 'Session expired. Please login again.'));
@@ -115,17 +107,104 @@ class LanguageCubit extends Cubit<LanguageState> {
     }
   }
 
+  /// Update multiple user language preferences in bulk (FIXED)
+  Future<void> updateUserLanguagePreferences({
+    required List<LanguagePreferenceUpdate> preferences,
+  }) async {
+    try {
+      emit(LanguageLoading());
+
+      final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
+      if (!isTokenValid) {
+        emit(LanguageError(
+            message: 'Authentication failed. Please login again.'));
+        return;
+      }
+
+      final accessToken = await authService.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        emit(LanguageError(
+            message: 'No access token available. Please login again.'));
+        return;
+      }
+
+      // Get current user to extract userId
+      final currentUser = await authService.getCurrentUser();
+      if (currentUser == null) {
+        emit(LanguageError(message: 'User not found. Please login again.'));
+        return;
+      }
+
+      dynamic userId = _extractUserId(currentUser);
+      if (userId == null) {
+        emit(LanguageError(
+            message: 'User ID not available. Please login again.'));
+        return;
+      }
+
+      // Convert preferences to UpdateLanguagePreferenceRequest objects
+      final requestList = preferences
+          .map((pref) => UpdateLanguagePreferenceRequest(
+                userId: userId,
+                languageId: pref.languageId,
+                proficiencyLevel: pref.proficiencyLevel,
+                isLearning: pref.isLearning,
+              ))
+          .toList();
+
+      final response = await languageService.updateUserLanguagePreferences(
+        requestList,
+        accessToken: accessToken,
+      );
+
+      if (response.statusCode == 200) {
+        final updatedPreferences = response.data as List<LanguagePreference>;
+
+        emit(LanguageUpdateSuccess(
+          updatedPreferences: updatedPreferences,
+          message:
+              response.message ?? 'Language preferences updated successfully',
+        ));
+      } else {
+        if (response.statusCode == 401) {
+          emit(LanguageError(message: 'Session expired. Please login again.'));
+        } else {
+          emit(LanguageError(
+              message: response.message ?? 'Failed to update preferences'));
+        }
+      }
+    } catch (e) {
+      emit(LanguageError(message: _handleError(e)));
+    }
+  }
+
+  /// Update single language preference (keeping for backward compatibility)
+  Future<void> updateLanguagePreference({
+    required int languageId,
+    required String proficiencyLevel,
+    bool isLearning = true,
+  }) async {
+    // Use the bulk update method with a single preference
+    await updateUserLanguagePreferences(
+      preferences: [
+        LanguagePreferenceUpdate(
+          languageId: languageId,
+          proficiencyLevel: proficiencyLevel,
+          isLearning: isLearning,
+        ),
+      ],
+    );
+  }
+
   /// Helper method to extract user ID from user object
   dynamic _extractUserId(dynamic user) {
     try {
-      // Try different common property names for user ID
       if (user.userId != null) return user.userId;
       if (user.id != null) return user.id;
       if (user.user_id != null) return user.user_id;
       if (user.userID != null) return user.userID;
       if (user.ID != null) return user.ID;
 
-      // If user is a Map, try accessing as map
       if (user is Map) {
         return user['userId'] ??
             user['id'] ??
@@ -134,73 +213,14 @@ class LanguageCubit extends Cubit<LanguageState> {
             user['ID'];
       }
 
-      // If all else fails, try to convert user object to string and look for patterns
       final userString = user.toString();
       print('User object string representation: $userString');
-
       return null;
     } catch (e) {
       print('Error extracting user ID: $e');
       return null;
     }
   }
-
-  // /// Update user language preference with authentication
-  // Future<void> updateLanguagePreference({
-  //   required int languageId,
-  //   required String proficiencyLevel,
-  // }) async {
-  //   try {
-  //     emit(LanguageLoading());
-
-  //     // Validate and refresh token if needed
-  //     final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
-
-  //     if (!isTokenValid) {
-  //       emit(LanguageError(message: 'Authentication failed. Please login again.'));
-  //       return;
-  //     }
-
-  //     // Get the access token
-  //     final accessToken = await authService.getAccessToken();
-
-  //     if (accessToken == null || accessToken.isEmpty) {
-  //       emit(LanguageError(message: 'No access token available. Please login again.'));
-  //       return;
-  //     }
-
-  //     // Get current user
-  //     final currentUser = await authService.getCurrentUser();
-
-  //     if (currentUser == null) {
-  //       emit(LanguageError(message: 'User not found. Please login again.'));
-  //       return;
-  //     }
-
-  //     // Call the language service to update preference
-  //     final response = await languageService.updateLanguagePreference(
-  //       userId: currentUser.userId,
-  //       languageId: languageId,
-  //       proficiencyLevel: proficiencyLevel,
-  //       accessToken: accessToken,
-  //     );
-
-  //     if (response.statusCode == 200) {
-  //       emit(LanguageUpdateSuccess(
-  //         updatedPreferences: response.data,
-  //         message: 'Language preference updated successfully',
-  //       ));
-  //     } else {
-  //       if (response.statusCode == 401) {
-  //         emit(LanguageError(message: 'Session expired. Please login again.'));
-  //       } else {
-  //         emit(LanguageError(message: response.message));
-  //       }
-  //     }
-  //   } catch (e) {
-  //     emit(LanguageError(message: _handleError(e)));
-  //   }
-  // }
 
   /// Check if user is authenticated
   Future<bool> checkAuthentication() async {
@@ -218,7 +238,6 @@ class LanguageCubit extends Cubit<LanguageState> {
       if (user == null) {
         emit(LanguageError(message: 'User not authenticated'));
       }
-      // You can emit a specific state for user info if needed
     } catch (e) {
       emit(LanguageError(message: _handleError(e)));
     }
@@ -255,4 +274,17 @@ class LanguageCubit extends Cubit<LanguageState> {
       return 'An unexpected error occurred. Please try again.';
     }
   }
+}
+
+/// Helper class for language preference updates
+class LanguagePreferenceUpdate {
+  final int languageId;
+  final String proficiencyLevel;
+  final bool isLearning;
+
+  LanguagePreferenceUpdate({
+    required this.languageId,
+    required this.proficiencyLevel,
+    required this.isLearning,
+  });
 }

@@ -1,5 +1,4 @@
-import 'package:e_learning_app/core/service/language_service.dart';
-import 'package:e_learning_app/feature/profile/data/user_state.dart';
+import 'package:e_learning_app/core/model/language_model.dart';
 import 'package:equatable/equatable.dart';
 
 abstract class LanguageState extends Equatable {

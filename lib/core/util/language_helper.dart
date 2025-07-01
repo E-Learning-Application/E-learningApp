@@ -3,15 +3,16 @@ import 'package:e_learning_app/core/model/language_request_model.dart';
 
 class LanguageHelper {
   /// Create a language preference request object
-  static UpdateLanguagePreferenceRequest createLanguagePreferenceRequest({
-    required int languageId,
-    required LanguageProficiencyLevel proficiencyLevel,
-    required bool isLearning,
-  }) {
+  static UpdateLanguagePreferenceRequest createLanguagePreferenceRequest(
+      {required int languageId,
+      required LanguageProficiencyLevel proficiencyLevel,
+      required bool isLearning,
+      required int userId}) {
     return UpdateLanguagePreferenceRequest(
       languageId: languageId,
       proficiencyLevel: proficiencyLevel.value,
       isLearning: isLearning,
+      userId: userId,
     );
   }
 

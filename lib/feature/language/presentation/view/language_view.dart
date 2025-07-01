@@ -13,7 +13,8 @@ class LanguageSelectionPage extends StatefulWidget {
 }
 
 class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
-  String? selectedLanguage;
+  Language? selectedLanguage;
+  List<Language> availableLanguages = [];
 
   @override
   void initState() {
@@ -24,7 +25,6 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   Future<void> _initializeLanguages() async {
     final languageCubit = context.read<LanguageCubit>();
 
-    // Check authentication first
     final isAuthenticated = await languageCubit.checkAuthentication();
 
     if (!isAuthenticated) {
@@ -34,7 +34,6 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
       return;
     }
 
-    // Fetch languages when the page loads
     languageCubit.getAllLanguages();
   }
 
@@ -42,15 +41,15 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Authentication Required'),
-        content: Text(
+        title: const Text('Authentication Required'),
+        content: const Text(
             'You need to be logged in to access languages. Please login and try again.'),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
             },
-            child: Text('OK'),
+            child: const Text('OK'),
           ),
         ],
       ),
@@ -63,28 +62,30 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24.0),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 20),
-
-                Text(
-                  'Choose the language you\nwant to learn',
+                const SizedBox(height: 20),
+                const Text(
+                  'Choose the language you want to learn',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
                     height: 1.2,
                   ),
                 ),
-                SizedBox(height: 40),
-
-                // Language options with BLoC
-                BlocBuilder<LanguageCubit, LanguageState>(
+                const SizedBox(height: 40),
+                BlocConsumer<LanguageCubit, LanguageState>(
+                  listener: (context, state) {
+                    if (state is LanguageSuccess) {
+                      availableLanguages = state.languages.cast<Language>();
+                    }
+                  },
                   builder: (context, state) {
                     if (state is LanguageLoading) {
-                      return Center(
+                      return const Center(
                         child: CircularProgressIndicator(
                           color: Color(0xFF4A90E2),
                         ),
@@ -95,7 +96,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                     } else if (state is LanguageError) {
                       return _buildErrorWidget(state.message);
                     } else {
-                      return Container(); // Initial state
+                      return Container();
                     }
                   },
                 ),
@@ -105,7 +106,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
         ),
       ),
       floatingActionButton: SizedBox(
-        width: MediaQuery.of(context).size.width - 48, // 24 padding each side
+        width: MediaQuery.of(context).size.width - 48,
         height: 56,
         child: ElevatedButton(
           onPressed: selectedLanguage != null
@@ -113,19 +114,23 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) =>
-                            ProficiencyPage(language: selectedLanguage!)),
+                      builder: (context) => ProficiencyPage(
+                        language: selectedLanguage!.name,
+                        languageId: selectedLanguage!.id,
+                      ),
+                    ),
                   );
                 }
               : null,
           style: ElevatedButton.styleFrom(
-            backgroundColor: Color(0xFF4A90E2),
+            backgroundColor: const Color(0xFF4A90E2),
+            disabledBackgroundColor: Colors.grey[300],
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
             elevation: 0,
           ),
-          child: Text(
+          child: const Text(
             'Next',
             style: TextStyle(
               fontSize: 18,
@@ -140,87 +145,89 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   }
 
   Widget _buildLanguageGrid(List<Language> languages) {
-    // Group languages in pairs for rows
-    List<Widget> rows = [];
-    for (int i = 0; i < languages.length; i += 2) {
-      Widget row;
-      if (i + 1 < languages.length) {
-        // Two languages in a row
-        row = _buildLanguageRow(languages[i], languages[i + 1]);
-      } else {
-        // Single language in the last row
-        row = Row(
-          children: [
-            Expanded(child: _buildLanguageCard(languages[i])),
-            Expanded(child: SizedBox()), // Empty space
-          ],
-        );
-      }
-      rows.add(row);
-      if (i + 2 < languages.length) {
-        rows.add(SizedBox(height: 20));
-      }
+    double screenWidth = MediaQuery.of(context).size.width;
+    int crossAxisCount;
+
+    if (screenWidth > 800) {
+      crossAxisCount = 4;
+    } else if (screenWidth > 600) {
+      crossAxisCount = 3;
+    } else {
+      crossAxisCount = 3;
     }
 
-    return Column(children: rows);
-  }
-
-  Widget _buildLanguageRow(Language lang1, Language lang2) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildLanguageCard(lang1),
-        ),
-        SizedBox(width: 16),
-        Expanded(
-          child: _buildLanguageCard(lang2),
-        ),
-      ],
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.85,
+      ),
+      itemCount: languages.length,
+      itemBuilder: (context, index) {
+        return _buildLanguageCard(languages[index]);
+      },
     );
   }
 
   Widget _buildLanguageCard(Language language) {
-    bool isSelected = selectedLanguage == language.name;
+    bool isSelected = selectedLanguage?.id == language.id;
 
     return GestureDetector(
       onTap: () {
         setState(() {
-          selectedLanguage = language.name;
+          selectedLanguage = language;
         });
       },
-      child: Container(
-        height: 120,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(
-            color: isSelected ? Color(0xFF4A90E2) : Color(0xFFE0E0E0),
+            color:
+                isSelected ? const Color(0xFF4A90E2) : const Color(0xFFE0E0E0),
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: Offset(0, 2),
+              color: isSelected
+                  ? const Color(0xFF4A90E2).withOpacity(0.1)
+                  : Colors.black.withOpacity(0.05),
+              blurRadius: isSelected ? 12 : 8,
+              offset: Offset(0, isSelected ? 4 : 2),
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Use language.flag if available, otherwise use a default emoji
-            Text(language.flag ?? _getDefaultFlag(language.name),
-                style: TextStyle(fontSize: 32)),
-            SizedBox(height: 8),
-            Text(
-              language.name,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87,
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                language.flag ?? _getDefaultFlag(language.name),
+                style: const TextStyle(
+                  fontSize: 28,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Flexible(
+                child: Text(
+                  language.name,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -236,7 +243,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
             size: 64,
             color: Colors.red[300],
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text(
             'Error',
             style: TextStyle(
@@ -245,7 +252,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
               color: Colors.red[400],
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             message,
             textAlign: TextAlign.center,
@@ -254,12 +261,11 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
               color: Colors.grey[600],
             ),
           ),
-          SizedBox(height: 24),
+          const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () async {
               final languageCubit = context.read<LanguageCubit>();
 
-              // Check authentication before retrying
               final isAuthenticated = await languageCubit.checkAuthentication();
 
               if (!isAuthenticated) {
@@ -270,12 +276,12 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
               languageCubit.getAllLanguages();
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF4A90E2),
+              backgroundColor: const Color(0xFF4A90E2),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: Text(
+            child: const Text(
               'Retry',
               style: TextStyle(color: Colors.white),
             ),
@@ -285,7 +291,6 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
     );
   }
 
-  // Helper method to provide default flags for languages
   String _getDefaultFlag(String languageName) {
     switch (languageName.toLowerCase()) {
       case 'english':
@@ -308,6 +313,42 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
         return '🇰🇷';
       case 'german':
         return '🇩🇪';
+      case 'portuguese':
+        return '🇵🇹';
+      case 'hindi':
+        return '🇮🇳';
+      case 'turkish':
+        return '🇹🇷';
+      case 'dutch':
+        return '🇳🇱';
+      case 'swedish':
+        return '🇸🇪';
+      case 'norwegian':
+        return '🇳🇴';
+      case 'danish':
+        return '🇩🇰';
+      case 'finnish':
+        return '🇫🇮';
+      case 'polish':
+        return '🇵🇱';
+      case 'czech':
+        return '🇨🇿';
+      case 'hungarian':
+        return '🇭🇺';
+      case 'greek':
+        return '🇬🇷';
+      case 'hebrew':
+        return '🇮🇱';
+      case 'thai':
+        return '🇹🇭';
+      case 'vietnamese':
+        return '🇻🇳';
+      case 'indonesian':
+        return '🇮🇩';
+      case 'malay':
+        return '🇲🇾';
+      case 'swahili':
+        return '🇰🇪';
       default:
         return '🌐';
     }

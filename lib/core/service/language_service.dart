@@ -2,17 +2,14 @@ import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
 import 'package:e_learning_app/core/model/api_response_model.dart';
+import 'package:e_learning_app/core/model/language_model.dart';
 import 'package:e_learning_app/core/model/language_request_model.dart';
-import 'package:e_learning_app/feature/profile/data/user_state.dart';
 
 class LanguageService {
   final DioConsumer dioConsumer;
 
   LanguageService({required this.dioConsumer});
 
-  // ================== Language Management ==================
-
-  /// Get all available languages with optional authentication
   Future<ApiResponse<List<Language>>> getAllLanguages({
     String? accessToken,
   }) async {
@@ -38,7 +35,6 @@ class LanguageService {
     }
   }
 
-  /// Add multiple languages to the platform (Admin only)
   Future<ApiResponse<List<Language>>> addLanguages(
     List<AddLanguageRequest> languages, {
     required String accessToken,
@@ -67,7 +63,6 @@ class LanguageService {
     }
   }
 
-  /// Update multiple languages in the platform (Admin only)
   Future<ApiResponse<List<Language>>> updateLanguages(
     List<UpdateLanguageRequest> languages, {
     required String accessToken,
@@ -96,7 +91,6 @@ class LanguageService {
     }
   }
 
-  /// Remove multiple languages from the platform (Admin only)
   Future<ApiResponse<List<int>>> removeLanguages(
     List<int> languageIds, {
     required String accessToken,
@@ -122,8 +116,6 @@ class LanguageService {
       rethrow;
     }
   }
-
-  // ================== Language Preferences ==================
 
   Future<ApiResponse<List<LanguagePreference>>> getUserLanguagePreferences(
     int userId, {
@@ -153,7 +145,6 @@ class LanguageService {
     }
   }
 
-  /// Update user language preferences with authentication
   Future<ApiResponse<List<LanguagePreference>>> updateUserLanguagePreferences(
     List<UpdateLanguagePreferenceRequest> preferences, {
     required String accessToken,
@@ -180,5 +171,25 @@ class LanguageService {
       print('Error in updateUserLanguagePreferences: $e');
       rethrow;
     }
+  }
+
+  Future<ApiResponse<List<LanguagePreference>>> updateLanguagePreference({
+    required int userId,
+    required int languageId,
+    required String proficiencyLevel,
+    required bool isLearning,
+    required String accessToken,
+  }) {
+    return updateUserLanguagePreferences(
+      [
+        UpdateLanguagePreferenceRequest(
+          userId: userId,
+          languageId: languageId,
+          proficiencyLevel: proficiencyLevel,
+          isLearning: isLearning,
+        )
+      ],
+      accessToken: accessToken,
+    );
   }
 }
