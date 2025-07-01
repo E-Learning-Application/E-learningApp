@@ -19,7 +19,6 @@ class EndPoint {
       '/api/LanguagePreference/user-language-preferences';
   static const String updateUserLanguagePreferences =
       '/api/LanguagePreference/update-user-language-preferences';
-
   // User endpoints
   static const String user = "/api/user";
 }

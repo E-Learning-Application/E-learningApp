@@ -34,7 +34,7 @@ class LanguageLearningApp extends StatelessWidget {
           BlocProvider<LanguageCubit>(
             create: (context) => LanguageCubit(
               languageService:
-                  LanguageService(apiConsumer: DioConsumer(dio: Dio())),
+                  LanguageService(dioConsumer: DioConsumer(dio: Dio())),
               authService: context.read<AuthService>(),
             ),
           ),

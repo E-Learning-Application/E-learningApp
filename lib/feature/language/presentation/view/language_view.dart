@@ -1,4 +1,4 @@
-import 'package:e_learning_app/core/service/language_service.dart';
+import 'package:e_learning_app/core/model/language_model.dart';
 import 'package:e_learning_app/feature/language/data/language_cubit.dart';
 import 'package:e_learning_app/feature/language/presentation/view/proficiency_view.dart';
 import 'package:e_learning_app/feature/language/data/language_state.dart';

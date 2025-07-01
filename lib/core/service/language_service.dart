@@ -1,144 +1,23 @@
-import 'package:e_learning_app/core/api/api_consumer.dart';
-import 'package:e_learning_app/core/api/end_points.dart';
 import 'package:dio/dio.dart';
-
-class Language {
-  final int id;
-  final String name;
-  final String code;
-  final String? flag; // Added flag field to match your original model
-
-  Language({
-    required this.id,
-    required this.name,
-    required this.code,
-    this.flag,
-  });
-
-  factory Language.fromJson(Map<String, dynamic> json) {
-    return Language(
-      id: json['id'],
-      name: json['name'],
-      code: json['code'],
-      flag: json['flag'], // Handle flag from API
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'code': code,
-      'flag': flag,
-    };
-  }
-}
-
-class LanguagePreference {
-  final Language language;
-  final String proficiencyLevel;
-  final bool isLearning;
-
-  LanguagePreference({
-    required this.language,
-    required this.proficiencyLevel,
-    required this.isLearning,
-  });
-
-  factory LanguagePreference.fromJson(Map<String, dynamic> json) {
-    return LanguagePreference(
-      language: Language.fromJson(json['language']),
-      proficiencyLevel: json['proficiencyLevel'],
-      isLearning: json['isLearning'],
-    );
-  }
-}
-
-class UpdateLanguagePreferenceRequest {
-  final int languageId;
-  final String proficiencyLevel;
-  final bool isLearning;
-
-  UpdateLanguagePreferenceRequest({
-    required this.languageId,
-    required this.proficiencyLevel,
-    required this.isLearning,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'LanguageId': languageId,
-      'proficiencyLevel': proficiencyLevel,
-      'IsLearning': isLearning,
-    };
-  }
-}
-
-class UpdateLanguageRequest {
-  final int id;
-  final String name;
-  final String code;
-
-  UpdateLanguageRequest({
-    required this.id,
-    required this.name,
-    required this.code,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'Id': id,
-      'Name': name,
-      'Code': code,
-    };
-  }
-}
-
-enum LanguageProficiencyLevel {
-  basic('Basic'),
-  conversational('Conversational'),
-  fluent('Fluent'),
-  native('Native');
-
-  const LanguageProficiencyLevel(this.value);
-  final String value;
-}
-
-// API Response Model
-class ApiResponse<T> {
-  final T data;
-  final int statusCode;
-  final String message;
-
-  ApiResponse({
-    required this.data,
-    required this.statusCode,
-    required this.message,
-  });
-
-  factory ApiResponse.fromJson(
-    Map<String, dynamic> json,
-    T Function(dynamic) fromJsonT,
-  ) {
-    return ApiResponse(
-      data: fromJsonT(json['data']),
-      statusCode: json['statusCode'] ?? 200,
-      message: json['message'] ?? 'Success',
-    );
-  }
-}
+import 'package:e_learning_app/core/api/dio_consumer.dart';
+import 'package:e_learning_app/core/api/end_points.dart';
+import 'package:e_learning_app/core/model/api_response_model.dart';
+import 'package:e_learning_app/core/model/language_request_model.dart';
+import 'package:e_learning_app/feature/profile/data/user_state.dart';
 
 class LanguageService {
-  final ApiConsumer apiConsumer;
+  final DioConsumer dioConsumer;
 
-  LanguageService({required this.apiConsumer});
+  LanguageService({required this.dioConsumer});
 
-  /// Get all available languages with authentication
+  // ================== Language Management ==================
+
+  /// Get all available languages with optional authentication
   Future<ApiResponse<List<Language>>> getAllLanguages({
     String? accessToken,
   }) async {
     try {
-      final response = await apiConsumer.get(
+      final response = await dioConsumer.get(
         EndPoint.getAllLanguages,
         options: Options(
           headers: accessToken != null
@@ -159,13 +38,99 @@ class LanguageService {
     }
   }
 
-  /// Get user language preferences with authentication
+  /// Add multiple languages to the platform (Admin only)
+  Future<ApiResponse<List<Language>>> addLanguages(
+    List<AddLanguageRequest> languages, {
+    required String accessToken,
+  }) async {
+    try {
+      final response = await dioConsumer.post(
+        EndPoint.addLanguages,
+        data: languages.map((lang) => lang.toJson()).toList(),
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      return ApiResponse.fromJson(
+        response,
+        (data) => (data as List)
+            .map((language) => Language.fromJson(language))
+            .toList(),
+      );
+    } catch (e) {
+      print('Error in addLanguages: $e');
+      rethrow;
+    }
+  }
+
+  /// Update multiple languages in the platform (Admin only)
+  Future<ApiResponse<List<Language>>> updateLanguages(
+    List<UpdateLanguageRequest> languages, {
+    required String accessToken,
+  }) async {
+    try {
+      final response = await dioConsumer.put(
+        EndPoint.updateLanguages,
+        data: languages.map((lang) => lang.toJson()).toList(),
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      return ApiResponse.fromJson(
+        response,
+        (data) => (data as List)
+            .map((language) => Language.fromJson(language))
+            .toList(),
+      );
+    } catch (e) {
+      print('Error in updateLanguages: $e');
+      rethrow;
+    }
+  }
+
+  /// Remove multiple languages from the platform (Admin only)
+  Future<ApiResponse<List<int>>> removeLanguages(
+    List<int> languageIds, {
+    required String accessToken,
+  }) async {
+    try {
+      final response = await dioConsumer.delete(
+        EndPoint.removeLanguages,
+        data: languageIds,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      return ApiResponse.fromJson(
+        response,
+        (data) => (data as List).map((id) => id as int).toList(),
+      );
+    } catch (e) {
+      print('Error in removeLanguages: $e');
+      rethrow;
+    }
+  }
+
+  // ================== Language Preferences ==================
+
   Future<ApiResponse<List<LanguagePreference>>> getUserLanguagePreferences(
     int userId, {
     required String accessToken,
   }) async {
     try {
-      final response = await apiConsumer.get(
+      final response = await dioConsumer.get(
         EndPoint.getUserLanguagePreferences,
         queryParameters: {'userId': userId},
         options: Options(
@@ -194,7 +159,7 @@ class LanguageService {
     required String accessToken,
   }) async {
     try {
-      final response = await apiConsumer.put(
+      final response = await dioConsumer.put(
         EndPoint.updateUserLanguagePreferences,
         data: preferences.map((pref) => pref.toJson()).toList(),
         options: Options(
@@ -216,134 +181,4 @@ class LanguageService {
       rethrow;
     }
   }
-
-  /// Update a single language preference with authentication
-  Future<ApiResponse<LanguagePreference>> updateSingleLanguagePreference({
-    required int userId,
-    required int languageId,
-    required String proficiencyLevel,
-    required bool isLearning,
-    required String accessToken,
-  }) async {
-    try {
-      final request = UpdateLanguagePreferenceRequest(
-        languageId: languageId,
-        proficiencyLevel: proficiencyLevel,
-        isLearning: isLearning,
-      );
-
-      final response = await apiConsumer.put(
-        '${EndPoint.updateUserLanguagePreferences}/$userId',
-        data: request.toJson(),
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-            'Content-Type': 'application/json',
-          },
-        ),
-      );
-
-      return ApiResponse.fromJson(
-        response,
-        (data) => LanguagePreference.fromJson(data),
-      );
-    } catch (e) {
-      print('Error in updateSingleLanguagePreference: $e');
-      rethrow;
-    }
-  }
-
-  /// Create a language preference request object
-  UpdateLanguagePreferenceRequest createLanguagePreferenceRequest({
-    required int languageId,
-    required LanguageProficiencyLevel proficiencyLevel,
-    required bool isLearning,
-  }) {
-    return UpdateLanguagePreferenceRequest(
-      languageId: languageId,
-      proficiencyLevel: proficiencyLevel.value,
-      isLearning: isLearning,
-    );
-  }
 }
-
-//   /// Create a language preference with authentication
-//   Future<ApiResponse<LanguagePreference>> createLanguagePreference({
-//     required int userId,
-//     required int languageId,
-//     required String proficiencyLevel,
-//     required bool isLearning,
-//     required String accessToken,
-//   }) async {
-//     try {
-//       final data = {
-//         'userId': userId,
-//         'languageId': languageId,
-//         'proficiencyLevel': proficiencyLevel,
-//         'isLearning': isLearning,
-//       };
-
-//       final response = await apiConsumer.post(
-//         EndPoint.createLanguagePreference,
-//         data: data,
-//         options: Options(
-//           headers: {
-//             'Authorization': 'Bearer $accessToken',
-//             'Content-Type': 'application/json',
-//           },
-//         ),
-//       );
-
-//       return ApiResponse.fromJson(
-//         response,
-//         (data) => LanguagePreference.fromJson(data),
-//       );
-//     } catch (e) {
-//       print('Error in createLanguagePreference: $e');
-//       rethrow;
-//     }
-//   }
-
-//   /// Delete a language preference with authentication
-//   Future<ApiResponse<bool>> deleteLanguagePreference({
-//     required int userId,
-//     required int languageId,
-//     required String accessToken,
-//   }) async {
-//     try {
-//       final response = await apiConsumer.delete(
-//         '${EndPoint.deleteLanguagePreference}/$userId/$languageId',
-//         options: Options(
-//           headers: {
-//             'Authorization': 'Bearer $accessToken',
-//             'Content-Type': 'application/json',
-//           },
-//         ),
-//       );
-
-//       return ApiResponse.fromJson(
-//         response,
-//         (data) => true,
-//       );
-//     } catch (e) {
-//       print('Error in deleteLanguagePreference: $e');
-//       rethrow;
-//     }
-//   }
-
-//   /// Get available proficiency levels
-//   List<LanguageProficiencyLevel> getAvailableProficiencyLevels() {
-//     return LanguageProficiencyLevel.values;
-//   }
-
-//   /// Get proficiency level by string value
-//   LanguageProficiencyLevel? getProficiencyLevelByValue(String value) {
-//     try {
-//       return LanguageProficiencyLevel.values.firstWhere(
-//         (level) => level.value.toLowerCase() == value.toLowerCase(),
-//       );
-//     } catch (e) {
-//       return null;
-//     }
-//   }
-// }
