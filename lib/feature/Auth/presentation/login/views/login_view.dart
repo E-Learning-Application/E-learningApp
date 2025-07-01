@@ -1,5 +1,5 @@
 import 'package:e_learning_app/feature/Auth/presentation/Register/presentation/view/register_view.dart';
-import 'package:e_learning_app/feature/home/presentation/views/home_view.dart';
+import 'package:e_learning_app/feature/app_container/app_container.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_state.dart';
 import 'package:flutter/material.dart';

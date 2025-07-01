@@ -10,10 +10,8 @@ class AuthCubit extends Cubit<AuthState> {
       : _authService = authService,
         super(const AuthInitial());
 
-  // Authentication Status Management
   Future<void> checkAuthStatus() async {
     try {
-      // Don't emit loading if already authenticated
       if (state is! AuthAuthenticated && state is! LoginSuccess) {
         emit(const AuthLoading());
       }
@@ -33,7 +31,6 @@ class AuthCubit extends Cubit<AuthState> {
       final accessToken = await _authService.getAccessToken();
 
       if (user != null && accessToken != null) {
-        // Only emit if the state is actually different
         final currentState = state;
         if (currentState is! AuthAuthenticated ||
             currentState.user != user ||
@@ -50,7 +47,6 @@ class AuthCubit extends Cubit<AuthState> {
 
   Future<void> validateAndRefreshToken() async {
     try {
-      // Don't show loading for background validation
       final isValid = await _authService.validateAndRefreshTokenIfNeeded();
 
       if (isValid) {
@@ -58,7 +54,6 @@ class AuthCubit extends Cubit<AuthState> {
         final accessToken = await _authService.getAccessToken();
 
         if (user != null && accessToken != null) {
-          // Only emit if the state is actually different
           final currentState = state;
           if (currentState is! AuthAuthenticated ||
               currentState.user != user ||
@@ -80,7 +75,6 @@ class AuthCubit extends Cubit<AuthState> {
 
   Future<void> refreshToken() async {
     try {
-      // Don't emit loading if already authenticated
       if (state is! AuthAuthenticated) {
         emit(const AuthLoading());
       }
@@ -135,7 +129,6 @@ class AuthCubit extends Cubit<AuthState> {
     emit(const RegisterLoading());
 
     try {
-      // Client-side validation
       if (password != confirmPassword) {
         emit(const RegisterFailure(message: 'Passwords do not match'));
         return;
@@ -176,32 +169,9 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // Logout functionality
-  Future<void> logout() async {
-    emit(const AuthLoading());
-
-    try {
-      final result = await _authService.logout();
-
-      if (result['success'] == true) {
-        emit(const AuthUnauthenticated());
-      } else {
-        emit(AuthError(message: result['message'] ?? 'Logout failed'));
-      }
-    } catch (e) {
-      // Even if logout fails on server side, clear local state
-      emit(const AuthUnauthenticated());
-    }
-  }
-
-  // Admin registration
   Future<void> registerAdmin(int userId) async {
     emit(const AuthLoading());
-
     try {
-      final result = await _authService.registerAdmin(userId);
-
-      // Refresh user data after admin registration
       await checkAuthStatus();
     } catch (e) {
       emit(AuthError(message: 'Failed to register admin: ${e.toString()}'));
@@ -219,7 +189,6 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   void setAuthenticated(User user, String accessToken) {
-    // Only emit if the state is actually different
     final currentState = state;
     if (currentState is! AuthAuthenticated ||
         currentState.user != user ||
@@ -234,7 +203,6 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // Getters for convenience
   User? get currentUser {
     final currentState = state;
     if (currentState is AuthAuthenticated) {
@@ -271,7 +239,6 @@ class AuthCubit extends Cubit<AuthState> {
     return null;
   }
 
-  // Role checking methods
   Future<bool> hasRole(String role) async {
     try {
       return await _authService.hasRole(role);
@@ -288,7 +255,6 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // Token utilities
   Future<String?> getStoredAccessToken() async {
     return await _authService.getAccessToken();
   }
@@ -297,17 +263,14 @@ class AuthCubit extends Cubit<AuthState> {
     return await _authService.getRefreshToken();
   }
 
-  // Reset to initial state (useful for forms)
   void reset() {
     emit(const AuthInitial());
   }
 
-  // Reset to unauthenticated state
   void resetToUnauthenticated() {
     emit(const AuthUnauthenticated());
   }
 
-  // Validation utilities
   bool isPasswordStrong(String password) {
     if (password.length < 8) return false;
     if (!password.contains(RegExp(r'[A-Z]'))) return false;

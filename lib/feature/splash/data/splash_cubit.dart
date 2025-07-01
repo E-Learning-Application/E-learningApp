@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/feature/Auth/presentation/login/views/login_view.dart';
-import 'package:e_learning_app/feature/home/presentation/views/home_view.dart';
+import 'package:e_learning_app/feature/app_container/app_container.dart';
 import 'package:e_learning_app/feature/onboarding/presentation/view/onboarding_screen.dart';
 import 'package:e_learning_app/feature/splash/data/splash_state.dart';
 import 'package:flutter/material.dart';
@@ -15,7 +15,7 @@ class SplashCubit extends Cubit<SplashState> {
   final AuthService _authService;
 
   SplashCubit()
-      : _secureStorage = const FlutterSecureStorage(), // Initialize here
+      : _secureStorage = const FlutterSecureStorage(),
         _authService = AuthService(dioConsumer: DioConsumer(dio: Dio())),
         super(SplashState.initial());
 

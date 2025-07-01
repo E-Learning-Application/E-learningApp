@@ -4,6 +4,7 @@ import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/core/service/language_service.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/language/data/language_cubit.dart';
+import 'package:e_learning_app/feature/profile/data/user_cubit.dart';
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -35,6 +36,12 @@ class LanguageLearningApp extends StatelessWidget {
               languageService:
                   LanguageService(apiConsumer: DioConsumer(dio: Dio())),
               authService: context.read<AuthService>(),
+            ),
+          ),
+          BlocProvider<UserCubit>(
+            create: (context) => UserCubit(
+              dioConsumer: DioConsumer(dio: Dio()),
+              authCubit: context.read<AuthCubit>(),
             ),
           ),
         ],
