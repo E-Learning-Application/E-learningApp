@@ -14,7 +14,6 @@ class LanguageCubit extends Cubit<LanguageState> {
     required this.authService,
   }) : super(LanguageInitial());
 
-  /// Get all available languages with authentication
   Future<void> getAllLanguages() async {
     try {
       emit(LanguageLoading());
@@ -53,7 +52,6 @@ class LanguageCubit extends Cubit<LanguageState> {
     }
   }
 
-  /// Get user language preferences with authentication
   Future<void> getUserLanguagePreferences() async {
     try {
       emit(LanguageLoading());
@@ -107,7 +105,6 @@ class LanguageCubit extends Cubit<LanguageState> {
     }
   }
 
-  /// Update multiple user language preferences in bulk (FIXED)
   Future<void> updateUserLanguagePreferences({
     required List<LanguagePreferenceUpdate> preferences,
   }) async {
@@ -128,7 +125,6 @@ class LanguageCubit extends Cubit<LanguageState> {
         return;
       }
 
-      // Get current user to extract userId
       final currentUser = await authService.getCurrentUser();
       if (currentUser == null) {
         emit(LanguageError(message: 'User not found. Please login again.'));
@@ -142,7 +138,6 @@ class LanguageCubit extends Cubit<LanguageState> {
         return;
       }
 
-      // Convert preferences to UpdateLanguagePreferenceRequest objects
       final requestList = preferences
           .map((pref) => UpdateLanguagePreferenceRequest(
                 userId: userId,
@@ -158,19 +153,17 @@ class LanguageCubit extends Cubit<LanguageState> {
       );
 
       if (response.statusCode == 200) {
-        final updatedPreferences = response.data as List<LanguagePreference>;
+        final updatedPreferences = response.data;
 
         emit(LanguageUpdateSuccess(
           updatedPreferences: updatedPreferences,
-          message:
-              response.message ?? 'Language preferences updated successfully',
+          message: response.message,
         ));
       } else {
         if (response.statusCode == 401) {
           emit(LanguageError(message: 'Session expired. Please login again.'));
         } else {
-          emit(LanguageError(
-              message: response.message ?? 'Failed to update preferences'));
+          emit(LanguageError(message: response.message));
         }
       }
     } catch (e) {
@@ -178,13 +171,11 @@ class LanguageCubit extends Cubit<LanguageState> {
     }
   }
 
-  /// Update single language preference (keeping for backward compatibility)
   Future<void> updateLanguagePreference({
     required int languageId,
     required String proficiencyLevel,
     bool isLearning = true,
   }) async {
-    // Use the bulk update method with a single preference
     await updateUserLanguagePreferences(
       preferences: [
         LanguagePreferenceUpdate(
@@ -196,7 +187,6 @@ class LanguageCubit extends Cubit<LanguageState> {
     );
   }
 
-  /// Helper method to extract user ID from user object
   dynamic _extractUserId(dynamic user) {
     try {
       if (user.userId != null) return user.userId;
@@ -222,7 +212,6 @@ class LanguageCubit extends Cubit<LanguageState> {
     }
   }
 
-  /// Check if user is authenticated
   Future<bool> checkAuthentication() async {
     try {
       return await authService.isUserAuthenticated();
@@ -231,7 +220,6 @@ class LanguageCubit extends Cubit<LanguageState> {
     }
   }
 
-  /// Get current user info
   Future<void> getCurrentUserInfo() async {
     try {
       final user = await authService.getCurrentUser();
@@ -243,12 +231,10 @@ class LanguageCubit extends Cubit<LanguageState> {
     }
   }
 
-  /// Reset state to initial
   void resetState() {
     emit(LanguageInitial());
   }
 
-  /// Handle different types of errors
   String _handleError(dynamic error) {
     if (error is String) {
       return error;
@@ -276,7 +262,6 @@ class LanguageCubit extends Cubit<LanguageState> {
   }
 }
 
-/// Helper class for language preference updates
 class LanguagePreferenceUpdate {
   final int languageId;
   final String proficiencyLevel;

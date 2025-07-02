@@ -1,7 +1,10 @@
 import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/feature/Auth/presentation/login/views/login_view.dart';
+import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/settings/data/settings_cubit.dart';
 import 'package:e_learning_app/feature/settings/data/settings_state.dart';
+import 'package:e_learning_app/feature/settings/presentation/view/language_managment.dart';
+import 'package:e_learning_app/core/service/language_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -36,12 +39,11 @@ class SettingsView extends StatelessWidget {
           );
 
           Future.delayed(const Duration(), () {
-            // ignore: use_build_context_synchronously
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
                 builder: (context) => const LoginView(),
               ),
-              (route) => false, // Remove all previous routes
+              (route) => false,
             );
           });
         } else if (state is SettingsLogoutFailure) {
@@ -58,6 +60,18 @@ class SettingsView extends StatelessWidget {
         body: SafeArea(
           child: BlocBuilder<SettingsCubit, SettingsState>(
             builder: (context, state) {
+              if (state is SettingsLoading) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
+
+              // Get admin status from state
+              bool isAdmin = false;
+              if (state is SettingsLoaded) {
+                isAdmin = state.isAdmin;
+              }
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -90,6 +104,13 @@ class SettingsView extends StatelessWidget {
                     onTap: () =>
                         context.read<SettingsCubit>().navigateToHistory(),
                   ),
+                  if (isAdmin)
+                    _buildSettingSection(
+                      context: context,
+                      title: 'Language Settings',
+                      icon: Icons.language,
+                      onTap: () => _navigateToLanguageManagement(context),
+                    ),
 
                   // Support Section Header
                   Padding(
@@ -136,15 +157,6 @@ class SettingsView extends StatelessWidget {
 
                   _buildSettingSection(
                     context: context,
-                    title: 'Change password',
-                    icon: Icons.lock_outline,
-                    onTap: () => context
-                        .read<SettingsCubit>()
-                        .navigateToChangePassword(),
-                  ),
-
-                  _buildSettingSection(
-                    context: context,
                     title: 'Logout',
                     icon: Icons.exit_to_app,
                     onTap: () => _showLogoutDialog(context),
@@ -158,6 +170,30 @@ class SettingsView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _navigateToLanguageManagement(BuildContext context) {
+    try {
+      final languageService = context.read<LanguageService>();
+      final authService = context.read<AuthService>();
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => LanguageManagementScreen(
+            languageService: languageService,
+            authService: authService,
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Language management not available. Services not configured.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showLogoutDialog(BuildContext context) {

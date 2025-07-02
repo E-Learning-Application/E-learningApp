@@ -5,6 +5,7 @@ import 'package:e_learning_app/core/service/language_service.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/language/data/language_cubit.dart';
 import 'package:e_learning_app/feature/profile/data/user_cubit.dart';
+import 'package:e_learning_app/feature/settings/data/language_mangment_cubit.dart';
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -18,11 +19,18 @@ class LanguageLearningApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authService = AuthService(dioConsumer: DioConsumer(dio: Dio()));
+    final dio = Dio();
+    final dioConsumer = DioConsumer(dio: dio);
+    final authService = AuthService(dioConsumer: dioConsumer);
+    final languageService = LanguageService(dioConsumer: dioConsumer);
 
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider<AuthService>.value(value: authService),
+        RepositoryProvider<LanguageService>.value(
+            value: languageService), // Add this line
+        RepositoryProvider<DioConsumer>.value(
+            value: dioConsumer), // Optional: for other services
       ],
       child: MultiBlocProvider(
         providers: [
@@ -33,15 +41,20 @@ class LanguageLearningApp extends StatelessWidget {
           ),
           BlocProvider<LanguageCubit>(
             create: (context) => LanguageCubit(
-              languageService:
-                  LanguageService(dioConsumer: DioConsumer(dio: Dio())),
+              languageService: context.read<LanguageService>(),
               authService: context.read<AuthService>(),
             ),
           ),
           BlocProvider<UserCubit>(
             create: (context) => UserCubit(
-              dioConsumer: DioConsumer(dio: Dio()),
+              dioConsumer: context.read<DioConsumer>(),
               authCubit: context.read<AuthCubit>(),
+            ),
+          ),
+          BlocProvider<LanguageManagementCubit>(
+            create: (context) => LanguageManagementCubit(
+              languageService: context.read<LanguageService>(),
+              authService: context.read<AuthService>(),
             ),
           ),
         ],

@@ -331,7 +331,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
                   ),
                   child: Icon(
                     icon,
-                    size: 20,
+                    size: 16,
                     color: accentColor,
                   ),
                 ),
@@ -339,19 +339,19 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
                 Text(
                   level,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: Colors.black87,
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 12),
+            SizedBox(height: 10),
             Expanded(
               child: Text(
                 description,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 10,
                   color: Colors.black54,
                   height: 1.3,
                 ),

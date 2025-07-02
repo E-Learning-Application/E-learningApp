@@ -20,12 +20,11 @@ class AuthService {
 
       final tokenCreatedAtString =
           await _secureStorage.read(key: 'tokenCreatedAt');
-      
+
       if (tokenCreatedAtString != null) {
         final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
         final now = DateTime.now();
 
-        // Check if access token is expired (after 24 minutes, leaving 6 minutes buffer)
         if (now.difference(tokenCreatedAt).inMinutes > 24) {
           return false;
         }
@@ -42,7 +41,7 @@ class AuthService {
     try {
       final tokenCreatedAtString =
           await _secureStorage.read(key: 'tokenCreatedAt');
-      
+
       if (tokenCreatedAtString == null) {
         return false;
       }
@@ -66,7 +65,6 @@ class AuthService {
         return false;
       }
 
-      // Check if refresh token is still valid (7 days)
       final tokenCreatedAtString =
           await _secureStorage.read(key: 'tokenCreatedAt');
       if (tokenCreatedAtString != null) {
@@ -82,7 +80,7 @@ class AuthService {
       }
 
       print('Attempting to refresh token...');
-      
+
       final response = await dioConsumer.post(
         EndPoint.refresh,
         data: {
@@ -117,6 +115,9 @@ class AuthService {
               key: ApiKey.username, value: authResponse.user.username);
         }
 
+        await _secureStorage.write(
+            key: ApiKey.roles, value: authResponse.user.roles.join(','));
+
         print('Token refreshed successfully');
         return true;
       }
@@ -125,7 +126,6 @@ class AuthService {
       return false;
     } catch (e) {
       print('Error refreshing token: $e');
-      // If refresh fails, clear tokens to force re-login
       await _clearLocalStorage();
       return false;
     }
@@ -161,15 +161,17 @@ class AuthService {
             key: ApiKey.username, value: authResponse.user.username);
         await _secureStorage.write(
             key: ApiKey.email, value: authResponse.user.email);
+        await _secureStorage.write(
+            key: ApiKey.roles, value: authResponse.user.roles.join(','));
       }
 
       return authResponse;
     } catch (e) {
       print('Login error: $e');
-      
+
       String errorMessage = 'Login failed';
       int statusCode = 500;
-      
+
       if (e.toString().contains('Invalid login data')) {
         errorMessage = 'Invalid login data. Please check your input.';
         statusCode = 400;
@@ -182,7 +184,7 @@ class AuthService {
       } else {
         errorMessage = 'Login failed: ${e.toString()}';
       }
-      
+
       return AuthResponse(
         statusCode: statusCode,
         message: errorMessage,
@@ -217,7 +219,7 @@ class AuthService {
           },
         ),
       );
-      
+
       if (response == null) {
         return AuthResponse(
           statusCode: 500,
@@ -230,14 +232,14 @@ class AuthService {
               roles: []),
         );
       }
-      
+
       return AuthResponse.fromJson(response);
     } catch (e) {
       print('Registration error: $e');
-      
+
       String errorMessage = 'Registration failed';
       int statusCode = 500;
-      
+
       if (e.toString().contains('Invalid registration data')) {
         errorMessage = 'Invalid registration data. Please check your input.';
         statusCode = 400;
@@ -250,7 +252,7 @@ class AuthService {
       } else {
         errorMessage = 'Registration failed: ${e.toString()}';
       }
-      
+
       return AuthResponse(
         statusCode: statusCode,
         message: errorMessage,
@@ -308,7 +310,7 @@ class AuthService {
         } catch (apiError) {
           print('API logout failed: $apiError');
           await _clearLocalStorage();
-          
+
           return {
             'success': true,
             'message': 'Logged out locally (API call failed)',
@@ -337,6 +339,7 @@ class AuthService {
     await _secureStorage.delete(key: ApiKey.userId);
     await _secureStorage.delete(key: ApiKey.username);
     await _secureStorage.delete(key: ApiKey.email);
+    await _secureStorage.delete(key: ApiKey.roles);
   }
 
   Future<Map<String, dynamic>> registerAdmin(int userId) async {
@@ -365,9 +368,17 @@ class AuthService {
       final userId = await _secureStorage.read(key: ApiKey.userId);
       final username = await _secureStorage.read(key: ApiKey.username);
       final email = await _secureStorage.read(key: ApiKey.email);
+      final rolesString = await _secureStorage.read(key: ApiKey.roles);
 
       if (userId == null || username == null || email == null) {
         return null;
+      }
+
+      List<String> roles = [];
+      if (rolesString != null && rolesString.isNotEmpty) {
+        roles = rolesString.split(',').map((role) => role.trim()).toList();
+      } else {
+        roles = ['User'];
       }
 
       return User(
@@ -375,9 +386,7 @@ class AuthService {
         username: username,
         email: email,
         isAuthenticated: true,
-        roles: [
-          'User'
-        ],
+        roles: roles,
         refreshTokenExpiration: null,
       );
     } catch (e) {
@@ -411,7 +420,8 @@ class AuthService {
         return false;
       }
 
-      return user.roles.contains(role);
+      return user.roles
+          .any((userRole) => userRole.toLowerCase() == role.toLowerCase());
     } catch (e) {
       print('Error checking role: $e');
       return false;
@@ -419,7 +429,7 @@ class AuthService {
   }
 
   Future<bool> isAdmin() async {
-    return await hasRole('Admin');
+    return await hasRole('admin');
   }
 
   Future<void> clearAuthenticationData() async {
@@ -434,21 +444,21 @@ class AuthService {
     try {
       final accessToken = await getAccessToken();
       final refreshToken = await getRefreshToken();
-      
+
       if (accessToken == null || refreshToken == null) {
         print('No tokens available');
         return false;
       }
 
       final isAuthenticated = await isUserAuthenticated();
-      
+
       if (!isAuthenticated) {
         print('Access token expired, attempting refresh...');
         return await refreshTokenIfNeeded();
       }
 
       final shouldRefresh = await shouldRefreshToken();
-      
+
       if (shouldRefresh) {
         print('Proactively refreshing token...');
         return await refreshTokenIfNeeded();

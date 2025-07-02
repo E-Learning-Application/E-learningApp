@@ -11,7 +11,14 @@ class SettingsInitial extends SettingsState {}
 
 class SettingsLoading extends SettingsState {}
 
-class SettingsLoaded extends SettingsState {}
+class SettingsLoaded extends SettingsState {
+  final bool isAdmin;
+
+  const SettingsLoaded({this.isAdmin = false});
+
+  @override
+  List<Object?> get props => [isAdmin];
+}
 
 class SettingsLogoutLoading extends SettingsState {}
 
