@@ -10,6 +10,38 @@ class AuthService {
 
   AuthService({required this.dioConsumer});
 
+  // Enhanced token validation method
+  Future<bool> isTokenValid() async {
+    try {
+      final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
+
+      if (accessToken == null || accessToken.isEmpty) {
+        print('No access token found');
+        return false;
+      }
+
+      final tokenCreatedAtString =
+          await _secureStorage.read(key: 'tokenCreatedAt');
+
+      if (tokenCreatedAtString == null) {
+        print('No token creation time found');
+        return false;
+      }
+
+      final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
+      final now = DateTime.now();
+      final tokenAge = now.difference(tokenCreatedAt).inMinutes;
+
+      print('Token age: $tokenAge minutes');
+
+      // Token expires after 30 minutes (adjust based on your backend)
+      return tokenAge < 30;
+    } catch (e) {
+      print('Error checking token validity: $e');
+      return false;
+    }
+  }
+
   Future<bool> isUserAuthenticated() async {
     try {
       final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
@@ -25,7 +57,7 @@ class AuthService {
         final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
         final now = DateTime.now();
 
-        if (now.difference(tokenCreatedAt).inMinutes > 24) {
+        if (now.difference(tokenCreatedAt).inMinutes > 30) {
           return false;
         }
       }
@@ -33,6 +65,41 @@ class AuthService {
       return true;
     } catch (e) {
       print('Error checking authentication status: $e');
+      return false;
+    }
+  }
+
+  // Enhanced authentication check with automatic refresh
+  Future<bool> isUserAuthenticatedWithRefresh() async {
+    try {
+      // First check if we have basic tokens
+      final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
+      final refreshToken = await _secureStorage.read(key: ApiKey.refreshToken);
+
+      if (accessToken == null || refreshToken == null) {
+        print('Missing tokens');
+        return false;
+      }
+
+      // Check if access token is still valid
+      if (await isTokenValid()) {
+        print('Access token is still valid');
+        return true;
+      }
+
+      // Access token expired, try to refresh
+      print('Access token expired, attempting refresh...');
+      final refreshSuccess = await refreshTokenIfNeeded();
+
+      if (refreshSuccess) {
+        print('Token refreshed successfully');
+        return true;
+      } else {
+        print('Token refresh failed');
+        return false;
+      }
+    } catch (e) {
+      print('Error in authentication check: $e');
       return false;
     }
   }
@@ -49,8 +116,8 @@ class AuthService {
       final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
       final now = DateTime.now();
 
-      // Refresh if token is older than 20 minutes (10 minutes before expiry)
-      return now.difference(tokenCreatedAt).inMinutes > 20;
+      // Refresh if token is older than 25 minutes (5 minutes before expiry)
+      return now.difference(tokenCreatedAt).inMinutes > 25;
     } catch (e) {
       print('Error checking if token should refresh: $e');
       return false;
@@ -440,34 +507,126 @@ class AuthService {
     }
   }
 
+  // Updated validateAndRefreshTokenIfNeeded method
   Future<bool> validateAndRefreshTokenIfNeeded() async {
     try {
       final accessToken = await getAccessToken();
       final refreshToken = await getRefreshToken();
 
       if (accessToken == null || refreshToken == null) {
-        print('No tokens available');
+        print('No tokens available for validation');
         return false;
       }
 
-      final isAuthenticated = await isUserAuthenticated();
+      // Check if refresh token itself is expired
+      final tokenCreatedAtString =
+          await _secureStorage.read(key: 'tokenCreatedAt');
 
-      if (!isAuthenticated) {
-        print('Access token expired, attempting refresh...');
-        return await refreshTokenIfNeeded();
+      if (tokenCreatedAtString != null) {
+        final tokenCreatedAt = DateTime.parse(tokenCreatedAtString);
+        final now = DateTime.now();
+
+        // If refresh token is expired (after 7 days), clear everything
+        if (now.difference(tokenCreatedAt).inDays >= 7) {
+          print('Refresh token expired, clearing all tokens');
+          await _clearLocalStorage();
+          return false;
+        }
       }
 
-      final shouldRefresh = await shouldRefreshToken();
-
-      if (shouldRefresh) {
-        print('Proactively refreshing token...');
-        return await refreshTokenIfNeeded();
+      // Check if access token is valid
+      if (await isTokenValid()) {
+        print('Access token is valid, no refresh needed');
+        return true;
       }
 
-      print('Token is still valid');
-      return true;
+      // Access token expired, attempt refresh
+      print('Access token expired, attempting refresh...');
+      final refreshSuccess = await refreshTokenIfNeeded();
+
+      if (refreshSuccess) {
+        print('Token refreshed successfully');
+        return true;
+      } else {
+        print('Token refresh failed');
+        await _clearLocalStorage();
+        return false;
+      }
     } catch (e) {
       print('Error validating and refreshing token: $e');
+      await _clearLocalStorage();
+      return false;
+    }
+  }
+
+  // Method to handle app resume scenarios
+  Future<bool> handleAppResume() async {
+    try {
+      print('Handling app resume - checking token status');
+
+      // Use the enhanced authentication check
+      return await isUserAuthenticatedWithRefresh();
+    } catch (e) {
+      print('Error handling app resume: $e');
+      return false;
+    }
+  }
+
+  // Method to check if tokens exist
+  Future<bool> hasTokens() async {
+    try {
+      final accessToken = await getAccessToken();
+      final refreshToken = await getRefreshToken();
+      return accessToken != null && refreshToken != null;
+    } catch (e) {
+      print('Error checking if tokens exist: $e');
+      return false;
+    }
+  }
+
+  // Method to get token creation time
+  Future<DateTime?> getTokenCreationTime() async {
+    try {
+      final tokenCreatedAtString =
+          await _secureStorage.read(key: 'tokenCreatedAt');
+      if (tokenCreatedAtString != null) {
+        return DateTime.parse(tokenCreatedAtString);
+      }
+      return null;
+    } catch (e) {
+      print('Error getting token creation time: $e');
+      return null;
+    }
+  }
+
+  // Method to get time until token expires
+  Future<Duration?> getTimeUntilTokenExpires() async {
+    try {
+      final tokenCreationTime = await getTokenCreationTime();
+      if (tokenCreationTime != null) {
+        final now = DateTime.now();
+        final tokenAge = now.difference(tokenCreationTime);
+        const tokenLifetime =
+            Duration(minutes: 30); // Adjust based on your backend
+
+        if (tokenAge < tokenLifetime) {
+          return tokenLifetime - tokenAge;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error calculating time until token expires: $e');
+      return null;
+    }
+  }
+
+  // Method to force token refresh
+  Future<bool> forceTokenRefresh() async {
+    try {
+      print('Forcing token refresh...');
+      return await refreshTokenIfNeeded();
+    } catch (e) {
+      print('Error forcing token refresh: $e');
       return false;
     }
   }

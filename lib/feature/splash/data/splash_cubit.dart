@@ -1,4 +1,3 @@
-// Updated splash_cubit.dart
 import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
@@ -63,27 +62,47 @@ class SplashCubit extends Cubit<SplashState> {
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    await Future.delayed(const Duration(milliseconds: 5000));
+    // Wait for animations to complete
+    await Future.delayed(const Duration(milliseconds: 3000));
 
     try {
+      // Check if user has seen onboarding
       final seenOnboardingValue =
           await _secureStorage.read(key: 'seenOnboarding');
       final seenOnboarding = seenOnboardingValue == 'true';
-      final isAuthenticated = await _authService.isUserAuthenticated();
 
-      Widget destination;
-
-      if (isAuthenticated) {
-        destination = const AppContainer();
-      } else if (seenOnboarding) {
-        destination = const LoginView();
-      } else {
-        destination = const OnboardingView();
+      // If haven't seen onboarding, go to onboarding
+      if (!seenOnboarding) {
+        emit(state.copyWith(navigateTo: const OnboardingView()));
+        return;
       }
 
-      emit(state.copyWith(navigateTo: destination));
+      // Try to validate and refresh token if needed
+      final isTokenValid = await _authService.validateAndRefreshTokenIfNeeded();
+
+      if (isTokenValid) {
+        // Token is valid or was successfully refreshed
+        final user = await _authService.getCurrentUser();
+        if (user != null) {
+          print('User authenticated successfully: ${user.username}');
+          emit(state.copyWith(navigateTo: const AppContainer()));
+          return;
+        }
+      }
+
+      // If we reach here, authentication failed
+      print('Authentication failed, redirecting to login');
+      emit(state.copyWith(navigateTo: const LoginView()));
     } catch (e) {
-      emit(state.copyWith(navigateTo: const OnboardingView()));
+      print('Error during authentication check: $e');
+      // On error, check if seen onboarding to decide where to go
+      final seenOnboardingValue =
+          await _secureStorage.read(key: 'seenOnboarding');
+      final seenOnboarding = seenOnboardingValue == 'true';
+
+      emit(state.copyWith(
+        navigateTo: seenOnboarding ? const LoginView() : const OnboardingView(),
+      ));
     }
   }
 
