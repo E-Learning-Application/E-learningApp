@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
 import 'package:e_learning_app/core/model/api_response_model.dart';
+import 'package:e_learning_app/core/model/interest_update_request.dart';
 import 'package:e_learning_app/feature/language/data/language_state.dart';
 
 class InterestService {
@@ -9,6 +10,44 @@ class InterestService {
 
   InterestService({required DioConsumer dioConsumer})
       : _dioConsumer = dioConsumer;
+
+  Future<ApiResponse> getAllInterests({
+    required String accessToken,
+  }) async {
+    try {
+      print('DEBUG: Getting all interests');
+
+      final response = await _dioConsumer.get(
+        EndPoint.getAllInterests,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      print('DEBUG: Get all interests response: $response');
+      return ApiResponse.fromJson(response, (data) => data);
+    } on DioException catch (e) {
+      print('DEBUG: DioException in getAllInterests: ${e.toString()}');
+      print('DEBUG: Response data: ${e.response?.data}');
+      print('DEBUG: Status code: ${e.response?.statusCode}');
+
+      return ApiResponse(
+        statusCode: e.response?.statusCode ?? 500,
+        message: _extractErrorMessage(e),
+        data: null,
+      );
+    } catch (e) {
+      print('DEBUG: General exception in getAllInterests: ${e.toString()}');
+      return ApiResponse(
+        statusCode: 500,
+        message: 'An unexpected error occurred: ${e.toString()}',
+        data: null,
+      );
+    }
+  }
 
   Future<ApiResponse> addInterest({
     required InterestAddRequest request,

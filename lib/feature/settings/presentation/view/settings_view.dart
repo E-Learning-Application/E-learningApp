@@ -1,9 +1,11 @@
 import 'package:e_learning_app/core/service/auth_service.dart';
+import 'package:e_learning_app/core/service/interest_service.dart';
 import 'package:e_learning_app/feature/Auth/presentation/login/views/login_view.dart';
-import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/settings/data/settings_cubit.dart';
 import 'package:e_learning_app/feature/settings/data/settings_state.dart';
+import 'package:e_learning_app/feature/settings/presentation/view/interest_management_view.dart';
 import 'package:e_learning_app/feature/settings/presentation/view/language_managment.dart';
+import 'package:e_learning_app/feature/settings/presentation/view/history_view.dart';
 import 'package:e_learning_app/core/service/language_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -54,6 +56,24 @@ class SettingsView extends StatelessWidget {
               duration: const Duration(seconds: 3),
             ),
           );
+        } else if (state is SettingsHistoryLoaded) {
+          // Navigate to history view when history is loaded
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => BlocProvider.value(
+                value: context.read<SettingsCubit>(),
+                child: const HistoryView(),
+              ),
+            ),
+          );
+        } else if (state is SettingsError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
       },
       child: Scaffold(
@@ -72,98 +92,108 @@ class SettingsView extends StatelessWidget {
                 isAdmin = state.isAdmin;
               }
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // App Bar
-                  const Padding(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-                    child: Text(
-                      'Settings',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+              return SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // App Bar
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 16.0),
+                      child: Text(
+                        'Settings',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
 
-                  // Settings List
-                  _buildSettingSection(
-                    context: context,
-                    title: 'Payment',
-                    icon: Icons.payment,
-                    onTap: () =>
-                        context.read<SettingsCubit>().navigateToPayment(),
-                  ),
-
-                  _buildSettingSection(
-                    context: context,
-                    title: 'History',
-                    icon: Icons.history,
-                    onTap: () =>
-                        context.read<SettingsCubit>().navigateToHistory(),
-                  ),
-                  if (isAdmin)
+                    // Settings List
                     _buildSettingSection(
                       context: context,
-                      title: 'Language Settings',
-                      icon: Icons.language,
-                      onTap: () => _navigateToLanguageManagement(context),
+                      title: 'Payment',
+                      icon: Icons.payment,
+                      onTap: () =>
+                          context.read<SettingsCubit>().navigateToPayment(),
                     ),
 
-                  // Support Section Header
-                  Padding(
-                    padding: const EdgeInsets.only(
-                        left: 16.0, top: 24.0, bottom: 8.0),
-                    child: Text(
-                      'Support',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
+                    _buildSettingSection(
+                      context: context,
+                      title: 'History',
+                      icon: Icons.history,
+                      onTap: () =>
+                          context.read<SettingsCubit>().navigateToHistory(),
+                    ),
+                    if (isAdmin)
+                      _buildSettingSection(
+                        context: context,
+                        title: 'Language Settings',
+                        icon: Icons.language,
+                        onTap: () => _navigateToLanguageManagement(context),
+                      ),
+
+                    if (isAdmin)
+                      _buildSettingSection(
+                        context: context,
+                        title: 'Interest Settings',
+                        icon: Icons.interests,
+                        onTap: () => _navigateToInterestManagement(context),
+                      ),
+
+                    // Support Section Header
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          left: 16.0, top: 24.0, bottom: 8.0),
+                      child: Text(
+                        'Support',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
                       ),
                     ),
-                  ),
 
-                  _buildSettingSection(
-                    context: context,
-                    title: 'Help Center',
-                    icon: Icons.help_outline,
-                    onTap: () =>
-                        context.read<SettingsCubit>().navigateToHelpCenter(),
-                  ),
+                    _buildSettingSection(
+                      context: context,
+                      title: 'Help Center',
+                      icon: Icons.help_outline,
+                      onTap: () =>
+                          context.read<SettingsCubit>().navigateToHelpCenter(),
+                    ),
 
-                  _buildSettingSection(
-                    context: context,
-                    title: 'Contact us',
-                    icon: Icons.mail_outline,
-                    onTap: () =>
-                        context.read<SettingsCubit>().navigateToContactUs(),
-                    hasExternalLink: true,
-                  ),
+                    _buildSettingSection(
+                      context: context,
+                      title: 'Contact us',
+                      icon: Icons.mail_outline,
+                      onTap: () =>
+                          context.read<SettingsCubit>().navigateToContactUs(),
+                      hasExternalLink: true,
+                    ),
 
-                  // Account Section Header
-                  Padding(
-                    padding: const EdgeInsets.only(
-                        left: 16.0, top: 24.0, bottom: 8.0),
-                    child: Text(
-                      'Account',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
+                    // Account Section Header
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          left: 16.0, top: 24.0, bottom: 8.0),
+                      child: Text(
+                        'Account',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
                       ),
                     ),
-                  ),
 
-                  _buildSettingSection(
-                    context: context,
-                    title: 'Logout',
-                    icon: Icons.exit_to_app,
-                    onTap: () => _showLogoutDialog(context),
-                    isLogout: true,
-                    isLoading: state is SettingsLogoutLoading,
-                  ),
-                ],
+                    _buildSettingSection(
+                      context: context,
+                      title: 'Logout',
+                      icon: Icons.exit_to_app,
+                      onTap: () => _showLogoutDialog(context),
+                      isLogout: true,
+                      isLoading: state is SettingsLogoutLoading,
+                    ),
+                  ],
+                ),
               );
             },
           ),
@@ -190,6 +220,30 @@ class SettingsView extends StatelessWidget {
         const SnackBar(
           content: Text(
               'Language management not available. Services not configured.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _navigateToInterestManagement(BuildContext context) {
+    try {
+      final interestService = context.read<InterestService>();
+      final authService = context.read<AuthService>();
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => InterestManagementScreen(
+            interestService: interestService,
+            authService: authService,
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Interest management not available. Services not configured.'),
           backgroundColor: Colors.red,
         ),
       );

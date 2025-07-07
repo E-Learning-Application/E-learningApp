@@ -1,3 +1,5 @@
+import 'package:equatable/equatable.dart';
+
 class UpdateLanguagePreferenceRequest {
   final int languageId;
   final String proficiencyLevel;

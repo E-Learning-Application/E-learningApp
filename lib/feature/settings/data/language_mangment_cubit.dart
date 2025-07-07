@@ -36,13 +36,13 @@ class LanguageManagementCubit extends Cubit<LanguageManagementState> {
         accessToken: accessToken,
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        _languages = response.data!;
+      if (response.statusCode == 200) {
+        _languages = response.data;
         _selectedLanguageIds.clear();
         emit(LanguageManagementLoaded(_languages));
       } else {
         emit(LanguageManagementError(
-          response.message ?? 'Failed to load languages',
+          response.message,
         ));
       }
     } catch (e) {
@@ -65,17 +65,17 @@ class LanguageManagementCubit extends Cubit<LanguageManagementState> {
         accessToken: accessToken,
       );
 
-      if (response.statusCode == 201 && response.data != null) {
-        _languages.addAll(response.data!);
+      if (response.statusCode == 201) {
+        _languages.addAll(response.data);
         emit(LanguageManagementLoaded(_languages));
         emit(LanguageManagementSuccess(
-          response.message ?? 'Languages added successfully',
+          response.message,
         ));
         // Reload to get fresh data
         await loadLanguages();
       } else {
         emit(LanguageManagementError(
-          response.message ?? 'Failed to add languages',
+          response.message,
         ));
       }
     } catch (e) {
@@ -99,8 +99,8 @@ class LanguageManagementCubit extends Cubit<LanguageManagementState> {
         accessToken: accessToken,
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        for (final updatedLanguage in response.data!) {
+      if (response.statusCode == 200) {
+        for (final updatedLanguage in response.data) {
           final index =
               _languages.indexWhere((lang) => lang.id == updatedLanguage.id);
           if (index != -1) {
@@ -109,12 +109,12 @@ class LanguageManagementCubit extends Cubit<LanguageManagementState> {
         }
         emit(LanguageManagementLoaded(_languages));
         emit(LanguageManagementSuccess(
-          response.message ?? 'Languages updated successfully',
+          response.message,
         ));
         await loadLanguages();
       } else {
         emit(LanguageManagementError(
-          response.message ?? 'Failed to update languages',
+          response.message,
         ));
       }
     } catch (e) {
@@ -137,8 +137,8 @@ class LanguageManagementCubit extends Cubit<LanguageManagementState> {
         accessToken: accessToken,
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        final deletedIds = response.data!;
+      if (response.statusCode == 200) {
+        final deletedIds = response.data;
         _languages.removeWhere((lang) => deletedIds.contains(lang.id));
         _selectedLanguageIds.removeWhere((id) => deletedIds.contains(id));
 

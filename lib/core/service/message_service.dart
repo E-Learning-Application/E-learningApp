@@ -1,24 +1,44 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'package:e_learning_app/core/model/message_model.dart';
-import 'package:http/http.dart' as http;
+import 'package:e_learning_app/core/api/dio_consumer.dart';
+import 'package:e_learning_app/core/api/end_points.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:dio/dio.dart';
 
 class MessageService {
-  final ApiClient _apiClient;
+  final DioConsumer _dioConsumer;
+  final FlutterSecureStorage _secureStorage;
 
-  MessageService({ApiClient? apiClient})
-      : _apiClient = apiClient ?? ApiClient();
+  MessageService({
+    required DioConsumer dioConsumer,
+    FlutterSecureStorage? secureStorage,
+  })  : _dioConsumer = dioConsumer,
+        _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
-  // Get all messages for current user
+  Future<Options> _getAuthOptions() async {
+    final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
+    return Options(
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    );
+  }
+
   Future<List<Message>> getAllMessages() async {
     try {
-      final response = await _apiClient.get('/api/messages');
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getAllMessages,
+        options: options,
+      );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Message.fromJson(json)).toList();
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to load messages: ${response.statusCode}');
+        throw Exception('Invalid response format');
       }
     } catch (e) {
       log('Error getting all messages: $e');
@@ -26,16 +46,18 @@ class MessageService {
     }
   }
 
-  // Get chat list (recent chats)
   Future<List<ChatSummary>> getChatList() async {
     try {
-      final response = await _apiClient.get('/api/messages/list');
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getChatList,
+        options: options,
+      );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => ChatSummary.fromJson(json)).toList();
+      if (response is List) {
+        return response.map((json) => ChatSummary.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to load chat list: ${response.statusCode}');
+        throw Exception('Invalid response format');
       }
     } catch (e) {
       log('Error getting chat list: $e');
@@ -43,17 +65,19 @@ class MessageService {
     }
   }
 
-  // Get chat messages with specific user
   Future<List<Message>> getChatWith(int withUserId) async {
     try {
-      final response =
-          await _apiClient.get('/api/messages/chat?withUser=$withUserId');
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getChatWith,
+        queryParameters: {'withUser': withUserId},
+        options: options,
+      );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Message.fromJson(json)).toList();
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to load chat: ${response.statusCode}');
+        throw Exception('Invalid response format');
       }
     } catch (e) {
       log('Error getting chat with user $withUserId: $e');
@@ -61,16 +85,18 @@ class MessageService {
     }
   }
 
-  // Get specific message by ID
   Future<Message> getMessageById(int messageId) async {
     try {
-      final response = await _apiClient.get('/api/messages/$messageId');
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        '${EndPoint.getMessageById}/$messageId',
+        options: options,
+      );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        return Message.fromJson(data);
+      if (response is Map<String, dynamic>) {
+        return Message.fromJson(response);
       } else {
-        throw Exception('Failed to load message: ${response.statusCode}');
+        throw Exception('Invalid response format');
       }
     } catch (e) {
       log('Error getting message by ID $messageId: $e');
@@ -78,15 +104,21 @@ class MessageService {
     }
   }
 
-  // Get unread messages count
   Future<int> getUnreadCount() async {
     try {
-      final response = await _apiClient.get('/api/messages/unread/count');
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getUnreadCount,
+        options: options,
+      );
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body) as int;
+      if (response is int) {
+        return response;
+      } else if (response is Map<String, dynamic> &&
+          response.containsKey('count')) {
+        return response['count'] as int;
       } else {
-        throw Exception('Failed to load unread count: ${response.statusCode}');
+        return 0;
       }
     } catch (e) {
       log('Error getting unread count: $e');
@@ -94,116 +126,183 @@ class MessageService {
     }
   }
 
-  // Get last message with specific user
   Future<Message?> getLastMessageWith(int withUserId) async {
     try {
-      final response =
-          await _apiClient.get('/api/messages/last?withUser=$withUserId');
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getLastMessage,
+        queryParameters: {'withUser': withUserId},
+        options: options,
+      );
 
-      if (response.statusCode == 200) {
-        final responseBody = response.body;
-        if (responseBody.isNotEmpty && responseBody != 'null') {
-          final Map<String, dynamic> data = json.decode(responseBody);
-          return Message.fromJson(data);
-        }
-        return null;
-      } else {
-        throw Exception('Failed to load last message: ${response.statusCode}');
+      if (response != null && response is Map<String, dynamic>) {
+        return Message.fromJson(response);
       }
+      return null;
     } catch (e) {
       log('Error getting last message with user $withUserId: $e');
       return null;
     }
   }
 
-  // Mark message as read
   Future<bool> markMessageAsRead(int messageId) async {
     try {
-      final response = await _apiClient.patch('/api/messages/read/$messageId');
-
-      return response.statusCode == 204;
+      final options = await _getAuthOptions();
+      await _dioConsumer.patch(
+        '${EndPoint.markMessageAsRead}/$messageId',
+        options: options,
+      );
+      return true;
     } catch (e) {
       log('Error marking message as read: $e');
       return false;
     }
   }
 
-  // Delete message
   Future<bool> deleteMessage(int messageId) async {
     try {
-      final response = await _apiClient.delete('/api/messages/$messageId');
-
-      return response.statusCode == 204;
+      final options = await _getAuthOptions();
+      await _dioConsumer.delete(
+        '${EndPoint.deleteMessage}/$messageId',
+        options: options,
+      );
+      return true;
     } catch (e) {
       log('Error deleting message: $e');
       return false;
     }
   }
 
-  // Send message (this would typically be done via SignalR, but keeping for API consistency)
   Future<Message?> sendMessage(SendMessageRequest request) async {
     try {
-      final response = await _apiClient.post(
-        '/api/messages',
-        body: json.encode(request.toJson()),
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.post(
+        EndPoint.sendMessage,
+        data: request.toJson(),
+        options: options,
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        return Message.fromJson(data);
+      if (response is Map<String, dynamic>) {
+        return Message.fromJson(response);
       } else {
-        throw Exception('Failed to send message: ${response.statusCode}');
+        throw Exception('Invalid response format');
       }
     } catch (e) {
       log('Error sending message: $e');
       return null;
     }
   }
-}
 
-class ApiClient {
-  final String baseUrl;
-  final Map<String, String> defaultHeaders;
-
-  ApiClient({
-    this.baseUrl = 'https://elearningproject.runasp.net',
-    this.defaultHeaders = const {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-  });
-
-  String? _token;
-
-  void setToken(String token) {
-    _token = token;
+  Future<bool> _isAuthenticated() async {
+    final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
+    return accessToken != null && accessToken.isNotEmpty;
   }
 
-  Map<String, String> get headers {
-    final headers = Map<String, String>.from(defaultHeaders);
-    if (_token != null) {
-      headers['Authorization'] = 'Bearer $_token';
+  // Get messages with pagination support
+  Future<List<Message>> getMessagesWithPagination({
+    int page = 1,
+    int pageSize = 20,
+    int? withUserId,
+  }) async {
+    try {
+      if (!await _isAuthenticated()) {
+        throw Exception('User not authenticated');
+      }
+
+      final options = await _getAuthOptions();
+      final queryParams = {
+        'page': page,
+        'pageSize': pageSize,
+      };
+
+      if (withUserId != null) {
+        queryParams['withUser'] = withUserId;
+      }
+
+      final response = await _dioConsumer.get(
+        EndPoint.getMessagesWithPagination,
+        queryParameters: queryParams,
+        options: options,
+      );
+
+      if (response is Map<String, dynamic> &&
+          response.containsKey('messages')) {
+        final List<dynamic> messages = response['messages'];
+        return messages.map((json) => Message.fromJson(json)).toList();
+      } else if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
+      } else {
+        throw Exception('Invalid response format');
+      }
+    } catch (e) {
+      log('Error getting messages with pagination: $e');
+      throw Exception('Failed to load messages: $e');
     }
-    return headers;
   }
 
-  Future<http.Response> get(String endpoint) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
-    return await http.get(uri, headers: headers);
+  Future<List<Message>> searchMessages(String query) async {
+    try {
+      if (!await _isAuthenticated()) {
+        throw Exception('User not authenticated');
+      }
+
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.searchMessages,
+        queryParameters: {'q': query},
+        options: options,
+      );
+
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
+      } else {
+        throw Exception('Invalid response format');
+      }
+    } catch (e) {
+      log('Error searching messages: $e');
+      throw Exception('Failed to search messages: $e');
+    }
   }
 
-  Future<http.Response> post(String endpoint, {String? body}) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
-    return await http.post(uri, headers: headers, body: body);
+  Future<bool> markAllMessagesAsRead(int withUserId) async {
+    try {
+      if (!await _isAuthenticated()) {
+        throw Exception('User not authenticated');
+      }
+
+      final options = await _getAuthOptions();
+      await _dioConsumer.patch(
+        EndPoint.markAllMessagesAsRead,
+        data: {'withUserId': withUserId},
+        options: options,
+      );
+      return true;
+    } catch (e) {
+      log('Error marking all messages as read: $e');
+      return false;
+    }
   }
 
-  Future<http.Response> patch(String endpoint, {String? body}) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
-    return await http.patch(uri, headers: headers, body: body);
-  }
+  Future<List<Message>> getMessageThread(int messageId) async {
+    try {
+      if (!await _isAuthenticated()) {
+        throw Exception('User not authenticated');
+      }
 
-  Future<http.Response> delete(String endpoint) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
-    return await http.delete(uri, headers: headers);
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        '${EndPoint.getMessageThread}/$messageId',
+        options: options,
+      );
+
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
+      } else {
+        throw Exception('Invalid response format');
+      }
+    } catch (e) {
+      log('Error getting message thread: $e');
+      throw Exception('Failed to load message thread: $e');
+    }
   }
 }

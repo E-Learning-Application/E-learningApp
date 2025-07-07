@@ -191,6 +191,45 @@ class LanguageCubit extends Cubit<LanguageState> {
     );
   }
 
+  Future<void> getAllInterests() async {
+    try {
+      emit(InterestLoading());
+
+      final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
+      if (!isTokenValid) {
+        emit(LanguageError(
+            message: 'Authentication failed. Please login again.'));
+        return;
+      }
+
+      final accessToken = await authService.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        emit(LanguageError(
+            message: 'No access token available. Please login again.'));
+        return;
+      }
+
+      final response = await interestService.getAllInterests(
+        accessToken: accessToken,
+      );
+
+      if (response.statusCode == 200) {
+        final interests = (response.data as List)
+            .map((e) => Interest.fromJson((e as dynamic).toJson()))
+            .toList();
+        emit(InterestSuccess(interests: interests));
+      } else {
+        if (response.statusCode == 401) {
+          emit(LanguageError(message: 'Session expired. Please login again.'));
+        } else {
+          emit(LanguageError(message: response.message));
+        }
+      }
+    } catch (e) {
+      emit(LanguageError(message: _handleError(e)));
+    }
+  }
+
   // NEW INTEREST METHODS
   Future<void> addInterest({
     required String name,

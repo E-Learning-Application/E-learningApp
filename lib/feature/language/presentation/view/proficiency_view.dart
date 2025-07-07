@@ -20,9 +20,11 @@ class ProficiencyPage extends StatefulWidget {
 
 class _ProficiencyPageState extends State<ProficiencyPage> {
   String? selectedProficiency;
-  List<String> selectedTopics = [];
+  List<Interest> selectedInterests = [];
+  List<Interest> availableInterests = [];
   bool isRegistering = false;
   bool isProcessingInterests = false;
+  bool isLoadingInterests = false;
 
   final Map<String, String> proficiencyMapping = {
     'Basic': 'Basic',
@@ -31,21 +33,33 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
     'Native': 'Native',
   };
 
-  // Map topic names to potential interest IDs (you'll need to adjust these based on your backend)
-  final Map<String, int> topicToInterestIdMap = {
-    'Programming': 1,
-    'Fashion': 2,
-    'Art': 3,
-    'Gaming': 4,
-    'Politics': 5,
-    'Photography': 6,
-    'Tourism': 7,
-    'Literature': 8,
-    'Music': 9,
-    'Sports': 10,
-    'Business': 11,
-    'Science': 12,
+  final Map<String, IconData> topicIcons = {
+    'Programming': Icons.code,
+    'Fashion': Icons.checkroom,
+    'Art': Icons.palette,
+    'Gaming': Icons.sports_esports,
+    'Politics': Icons.how_to_vote,
+    'Photography': Icons.camera_alt,
+    'Tourism': Icons.travel_explore,
+    'Literature': Icons.menu_book,
+    'Music': Icons.music_note,
+    'Sports': Icons.sports_soccer,
+    'Business': Icons.business,
+    'Science': Icons.science,
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInterests();
+  }
+
+  void _loadInterests() {
+    setState(() {
+      isLoadingInterests = true;
+    });
+    context.read<LanguageCubit>().getAllInterests();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,17 +84,19 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
       ),
       body: BlocListener<LanguageCubit, LanguageState>(
         listener: (context, state) {
-          if (state is LanguageUpdateSuccess) {
-            // After language preference is updated, add interests if any are selected
-            if (selectedTopics.isNotEmpty) {
+          if (state is InterestSuccess) {
+            setState(() {
+              availableInterests = state.interests;
+              isLoadingInterests = false;
+            });
+          } else if (state is LanguageUpdateSuccess) {
+            if (selectedInterests.isNotEmpty) {
               _addSelectedInterests();
             } else {
               _completeRegistration();
             }
           } else if (state is UserInterestAddSuccess) {
-            // Interest added successfully, continue with remaining interests or complete
             if (isProcessingInterests) {
-              // If we're still processing interests, don't show completion yet
               return;
             }
             _completeRegistration();
@@ -88,6 +104,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
             setState(() {
               isRegistering = false;
               isProcessingInterests = false;
+              isLoadingInterests = false;
             });
 
             ScaffoldMessenger.of(context).showSnackBar(
@@ -216,24 +233,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
                     ),
                   ),
                   SizedBox(height: 20),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _buildTopicChip('Programming', Icons.code),
-                      _buildTopicChip('Fashion', Icons.checkroom),
-                      _buildTopicChip('Art', Icons.palette),
-                      _buildTopicChip('Gaming', Icons.sports_esports),
-                      _buildTopicChip('Politics', Icons.how_to_vote),
-                      _buildTopicChip('Photography', Icons.camera_alt),
-                      _buildTopicChip('Tourism', Icons.travel_explore),
-                      _buildTopicChip('Literature', Icons.menu_book),
-                      _buildTopicChip('Music', Icons.music_note),
-                      _buildTopicChip('Sports', Icons.sports_soccer),
-                      _buildTopicChip('Business', Icons.business),
-                      _buildTopicChip('Science', Icons.science),
-                    ],
-                  ),
+                  _buildInterestsSection(),
                   SizedBox(height: 100),
                 ],
               ),
@@ -292,6 +292,116 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildInterestsSection() {
+    if (isLoadingInterests) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4A90E2)),
+          ),
+        ),
+      );
+    }
+
+    if (availableInterests.isEmpty) {
+      return Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[200]!),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: Colors.grey[400],
+              size: 32,
+            ),
+            SizedBox(height: 8),
+            Text(
+              'No interests available at the moment',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 16,
+              ),
+            ),
+            SizedBox(height: 8),
+            TextButton(
+              onPressed: _loadInterests,
+              child: Text(
+                'Retry',
+                style: TextStyle(
+                  color: Color(0xFF4A90E2),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: availableInterests.map((interest) {
+        return _buildInterestChip(interest);
+      }).toList(),
+    );
+  }
+
+  Widget _buildInterestChip(Interest interest) {
+    bool isSelected =
+        selectedInterests.any((selected) => selected.id == interest.id);
+    IconData icon = topicIcons[interest.name] ?? Icons.category;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (isSelected) {
+            selectedInterests
+                .removeWhere((selected) => selected.id == interest.id);
+          } else {
+            selectedInterests.add(interest);
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? Color(0xFF4A90E2) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(25),
+          border: Border.all(
+            color: isSelected ? Color(0xFF4A90E2) : Colors.transparent,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : Colors.grey[600],
+            ),
+            SizedBox(width: 6),
+            Text(
+              interest.name,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: isSelected ? Colors.white : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -371,55 +481,6 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
     );
   }
 
-  Widget _buildTopicChip(String topic, IconData? icon) {
-    bool isSelected = selectedTopics.contains(topic);
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (isSelected) {
-            selectedTopics.remove(topic);
-          } else {
-            selectedTopics.add(topic);
-          }
-        });
-      },
-      child: AnimatedContainer(
-        duration: Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? Color(0xFF4A90E2) : Colors.grey[100],
-          borderRadius: BorderRadius.circular(25),
-          border: Border.all(
-            color: isSelected ? Color(0xFF4A90E2) : Colors.transparent,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 16,
-                color: isSelected ? Colors.white : Colors.grey[600],
-              ),
-              SizedBox(width: 6),
-            ],
-            Text(
-              topic,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.white : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _handleRegistration() async {
     if (selectedProficiency == null) return;
 
@@ -461,7 +522,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
   }
 
   void _addSelectedInterests() async {
-    if (selectedTopics.isEmpty) {
+    if (selectedInterests.isEmpty) {
       _completeRegistration();
       return;
     }
@@ -473,18 +534,9 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
     try {
       final languageCubit = context.read<LanguageCubit>();
 
-      // Convert selected topics to interest IDs
-      List<int> interestIds = selectedTopics
-          .map((topic) => topicToInterestIdMap[topic])
-          .where((id) => id != null)
-          .cast<int>()
-          .toList();
-
-      if (interestIds.isNotEmpty) {
-        // Add interests one by one
-        for (int interestId in interestIds) {
-          await languageCubit.addUserInterest(interestId: interestId);
-        }
+      // Add interests one by one
+      for (Interest interest in selectedInterests) {
+        await languageCubit.addUserInterest(interestId: interest.id);
       }
 
       setState(() {

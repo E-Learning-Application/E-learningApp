@@ -20,6 +20,15 @@ class SettingsLoaded extends SettingsState {
   List<Object?> get props => [isAdmin];
 }
 
+class SettingsHistoryLoaded extends SettingsState {
+  final List<Map<String, dynamic>> matchHistory;
+
+  const SettingsHistoryLoaded({required this.matchHistory});
+
+  @override
+  List<Object?> get props => [matchHistory];
+}
+
 class SettingsLogoutLoading extends SettingsState {}
 
 class SettingsLogoutSuccess extends SettingsState {}
