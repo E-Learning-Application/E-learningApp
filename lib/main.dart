@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
+import 'package:e_learning_app/core/service/interest_service.dart';
 import 'package:e_learning_app/core/service/language_service.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/language/data/language_cubit.dart';
@@ -23,14 +24,15 @@ class LanguageLearningApp extends StatelessWidget {
     final dioConsumer = DioConsumer(dio: dio);
     final authService = AuthService(dioConsumer: dioConsumer);
     final languageService = LanguageService(dioConsumer: dioConsumer);
+    final interestService = InterestService(dioConsumer: dioConsumer);
 
     return MultiRepositoryProvider(
       providers: [
         RepositoryProvider<AuthService>.value(value: authService),
-        RepositoryProvider<LanguageService>.value(
-            value: languageService), // Add this line
-        RepositoryProvider<DioConsumer>.value(
-            value: dioConsumer), // Optional: for other services
+        RepositoryProvider<LanguageService>.value(value: languageService),
+        RepositoryProvider<InterestService>.value(
+            value: interestService), // Add this line
+        RepositoryProvider<DioConsumer>.value(value: dioConsumer),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -43,6 +45,7 @@ class LanguageLearningApp extends StatelessWidget {
             create: (context) => LanguageCubit(
               languageService: context.read<LanguageService>(),
               authService: context.read<AuthService>(),
+              interestService: context.read<InterestService>(),
             ),
           ),
           BlocProvider<UserCubit>(

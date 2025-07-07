@@ -22,12 +22,29 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
   String? selectedProficiency;
   List<String> selectedTopics = [];
   bool isRegistering = false;
+  bool isProcessingInterests = false;
 
   final Map<String, String> proficiencyMapping = {
     'Basic': 'Basic',
     'Independent': 'Conversational',
     'Proficient': 'Fluent',
     'Native': 'Native',
+  };
+
+  // Map topic names to potential interest IDs (you'll need to adjust these based on your backend)
+  final Map<String, int> topicToInterestIdMap = {
+    'Programming': 1,
+    'Fashion': 2,
+    'Art': 3,
+    'Gaming': 4,
+    'Politics': 5,
+    'Photography': 6,
+    'Tourism': 7,
+    'Literature': 8,
+    'Music': 9,
+    'Sports': 10,
+    'Business': 11,
+    'Science': 12,
   };
 
   @override
@@ -54,34 +71,23 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
       body: BlocListener<LanguageCubit, LanguageState>(
         listener: (context, state) {
           if (state is LanguageUpdateSuccess) {
-            setState(() {
-              isRegistering = false;
-            });
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Registration completed successfully!'),
-                  ],
-                ),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            );
-
-            Future.delayed(Duration(seconds: 1), () {
-              Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => AppContainer()));
-            });
+            // After language preference is updated, add interests if any are selected
+            if (selectedTopics.isNotEmpty) {
+              _addSelectedInterests();
+            } else {
+              _completeRegistration();
+            }
+          } else if (state is UserInterestAddSuccess) {
+            // Interest added successfully, continue with remaining interests or complete
+            if (isProcessingInterests) {
+              // If we're still processing interests, don't show completion yet
+              return;
+            }
+            _completeRegistration();
           } else if (state is LanguageError) {
             setState(() {
               isRegistering = false;
+              isProcessingInterests = false;
             });
 
             ScaffoldMessenger.of(context).showSnackBar(
@@ -264,7 +270,9 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
                     ),
                     SizedBox(width: 12),
                     Text(
-                      'Registering...',
+                      isProcessingInterests
+                          ? 'Adding interests...'
+                          : 'Registering...',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -421,9 +429,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
 
     try {
       final languageCubit = context.read<LanguageCubit>();
-
       final languageId = widget.languageId ?? 1;
-
       final apiProficiencyLevel = proficiencyMapping[selectedProficiency!]!;
 
       final preferences = [
@@ -434,6 +440,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
         ),
       ];
 
+      // First update language preferences
       await languageCubit.updateUserLanguagePreferences(
         preferences: preferences,
       );
@@ -451,5 +458,87 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
         ),
       );
     }
+  }
+
+  void _addSelectedInterests() async {
+    if (selectedTopics.isEmpty) {
+      _completeRegistration();
+      return;
+    }
+
+    setState(() {
+      isProcessingInterests = true;
+    });
+
+    try {
+      final languageCubit = context.read<LanguageCubit>();
+
+      // Convert selected topics to interest IDs
+      List<int> interestIds = selectedTopics
+          .map((topic) => topicToInterestIdMap[topic])
+          .where((id) => id != null)
+          .cast<int>()
+          .toList();
+
+      if (interestIds.isNotEmpty) {
+        // Add interests one by one
+        for (int interestId in interestIds) {
+          await languageCubit.addUserInterest(interestId: interestId);
+        }
+      }
+
+      setState(() {
+        isProcessingInterests = false;
+      });
+
+      _completeRegistration();
+    } catch (e) {
+      setState(() {
+        isProcessingInterests = false;
+        isRegistering = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Failed to add interests. Registration completed without interests.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      _completeRegistration();
+    }
+  }
+
+  void _completeRegistration() {
+    setState(() {
+      isRegistering = false;
+      isProcessingInterests = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            SizedBox(width: 8),
+            Text('Registration completed successfully!'),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
+
+    Future.delayed(Duration(seconds: 1), () {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => AppContainer()),
+      );
+    });
   }
 }

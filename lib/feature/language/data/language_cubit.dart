@@ -1,5 +1,6 @@
 import 'package:e_learning_app/feature/language/data/language_state.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
+import 'package:e_learning_app/core/service/interest_service.dart'; // Add this
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:e_learning_app/core/service/language_service.dart';
 import 'package:e_learning_app/core/model/language_model.dart';
@@ -8,12 +9,15 @@ import 'package:e_learning_app/core/model/language_request_model.dart';
 class LanguageCubit extends Cubit<LanguageState> {
   final LanguageService languageService;
   final AuthService authService;
+  final InterestService interestService;
 
   LanguageCubit({
     required this.languageService,
     required this.authService,
+    required this.interestService,
   }) : super(LanguageInitial());
 
+  // Existing language methods...
   Future<void> getAllLanguages() async {
     try {
       emit(LanguageLoading());
@@ -187,6 +191,189 @@ class LanguageCubit extends Cubit<LanguageState> {
     );
   }
 
+  // NEW INTEREST METHODS
+  Future<void> addInterest({
+    required String name,
+    String? description,
+  }) async {
+    try {
+      emit(InterestLoading());
+
+      final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
+      if (!isTokenValid) {
+        emit(LanguageError(
+            message: 'Authentication failed. Please login again.'));
+        return;
+      }
+
+      final accessToken = await authService.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        emit(LanguageError(
+            message: 'No access token available. Please login again.'));
+        return;
+      }
+
+      final request = InterestAddRequest(
+        name: name,
+        description: description,
+      );
+
+      final response = await interestService.addInterest(
+        request: request,
+        accessToken: accessToken,
+      );
+
+      if (response.statusCode == 200) {
+        final interest = Interest.fromJson(response.data);
+        emit(InterestAddSuccess(
+          interest: interest,
+          message: response.message,
+        ));
+      } else {
+        if (response.statusCode == 401) {
+          emit(LanguageError(message: 'Session expired. Please login again.'));
+        } else {
+          emit(LanguageError(message: response.message));
+        }
+      }
+    } catch (e) {
+      emit(LanguageError(message: _handleError(e)));
+    }
+  }
+
+  Future<void> addUserInterest({
+    required int interestId,
+  }) async {
+    try {
+      emit(InterestLoading());
+
+      final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
+      if (!isTokenValid) {
+        emit(LanguageError(
+            message: 'Authentication failed. Please login again.'));
+        return;
+      }
+
+      final accessToken = await authService.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        emit(LanguageError(
+            message: 'No access token available. Please login again.'));
+        return;
+      }
+
+      final currentUser = await authService.getCurrentUser();
+      if (currentUser == null) {
+        emit(LanguageError(message: 'User not found. Please login again.'));
+        return;
+      }
+
+      dynamic userId = _extractUserId(currentUser);
+      if (userId == null) {
+        emit(LanguageError(
+            message: 'User ID not available. Please login again.'));
+        return;
+      }
+
+      final request = UserInterestAddRequest(
+        userId: userId,
+        interestId: interestId,
+      );
+
+      final response = await interestService.addUserInterest(
+        request: request,
+        accessToken: accessToken,
+      );
+
+      if (response.statusCode == 200) {
+        final userInterest = UserInterest.fromJson(response.data);
+        emit(UserInterestAddSuccess(
+          userInterest: userInterest,
+          message: response.message,
+        ));
+      } else {
+        if (response.statusCode == 401) {
+          emit(LanguageError(message: 'Session expired. Please login again.'));
+        } else {
+          emit(LanguageError(message: response.message));
+        }
+      }
+    } catch (e) {
+      emit(LanguageError(message: _handleError(e)));
+    }
+  }
+
+  Future<void> getUserInterests() async {
+    try {
+      emit(InterestLoading());
+
+      final isTokenValid = await authService.validateAndRefreshTokenIfNeeded();
+      if (!isTokenValid) {
+        emit(LanguageError(
+            message: 'Authentication failed. Please login again.'));
+        return;
+      }
+
+      final accessToken = await authService.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) {
+        emit(LanguageError(
+            message: 'No access token available. Please login again.'));
+        return;
+      }
+
+      final response = await interestService.getUserInterests(
+        accessToken: accessToken,
+      );
+
+      if (response.statusCode == 200) {
+        final userInterests = (response.data as List)
+            .map((e) => UserInterest.fromJson((e as dynamic).toJson()))
+            .toList();
+        emit(UserInterestSuccess(userInterests: userInterests));
+      } else {
+        if (response.statusCode == 401) {
+          emit(LanguageError(message: 'Session expired. Please login again.'));
+        } else {
+          emit(LanguageError(message: response.message));
+        }
+      }
+    } catch (e) {
+      emit(LanguageError(message: _handleError(e)));
+    }
+  }
+
+  // Method to add multiple interests for a user (batch operation)
+  Future<void> addMultipleUserInterests({
+    required List<int> interestIds,
+  }) async {
+    try {
+      emit(InterestLoading());
+
+      final currentUser = await authService.getCurrentUser();
+      if (currentUser == null) {
+        emit(LanguageError(message: 'User not found. Please login again.'));
+        return;
+      }
+
+      dynamic userId = _extractUserId(currentUser);
+      if (userId == null) {
+        emit(LanguageError(
+            message: 'User ID not available. Please login again.'));
+        return;
+      }
+
+      // Add interests one by one (you could also create a batch API endpoint)
+      for (int interestId in interestIds) {
+        await addUserInterest(interestId: interestId);
+      }
+
+      // After adding all interests, refresh the user interests
+      await getUserInterests();
+    } catch (e) {
+      emit(LanguageError(message: _handleError(e)));
+    }
+  }
+
+  // Helper methods...
   dynamic _extractUserId(dynamic user) {
     try {
       if (user.userId != null) return user.userId;

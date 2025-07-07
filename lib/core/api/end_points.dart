@@ -14,11 +14,17 @@ class EndPoint {
   static const String updateLanguages = '/api/language/update-languages';
   static const String removeLanguages = '/api/language/remove-languages';
 
+  // Interest endpoints
+  static const String addInterest = '/api/interests';
+  static const String addUserInterest = '/api/interests/user-interests';
+  static const String getUserInterests = '/api/interests/user-interests';
+
   // Language Preference endpoints
   static const String getUserLanguagePreferences =
       '/api/LanguagePreference/user-language-preferences';
   static const String updateUserLanguagePreferences =
       '/api/LanguagePreference/update-user-language-preferences';
+
   // User endpoints
   static const String user = "/api/user";
 }
