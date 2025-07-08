@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
+import 'package:signalr_netcore/ihub_protocol.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 import 'package:e_learning_app/core/model/message_model.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:logging/logging.dart';
 
 class SignalRService {
-  static const String _hubUrl =
-      'https://elearningproject.runasp.net/messageHub';
+  // FIXED: Updated hub URL to match ChatHub instead of messageHub
+  static const String _hubUrl = 'https://elearningproject.runasp.net/chatHub';
   static const int _maxRetryAttempts = 3;
   static const int _reconnectDelay = 2000;
 
@@ -53,6 +55,15 @@ class SignalRService {
   int? get currentUserId => _currentUserId;
   int get queuedMessagesCount => _messageQueue.length;
 
+  /// Helper method to create MessageHeaders
+  MessageHeaders _createMessageHeaders(Map<String, String> headers) {
+    final messageHeaders = MessageHeaders();
+    headers.forEach((key, value) {
+      messageHeaders.setHeaderValue(key, value);
+    });
+    return messageHeaders;
+  }
+
   /// Initialize SignalR connection
   Future<bool> initialize({
     required int userId,
@@ -76,18 +87,24 @@ class SignalRService {
         return false;
       }
 
-      // Create hub connection
+      // Create hub connection with proper configuration
       _hubConnection = HubConnectionBuilder()
           .withUrl(_hubUrl,
               options: HttpConnectionOptions(
                 accessTokenFactory: () => Future.value(accessToken),
                 transport: HttpTransportType.WebSockets,
-                skipNegotiation: true,
+                skipNegotiation:
+                    false, // Changed to false for better compatibility
                 requestTimeout: 30000,
+                headers: _createMessageHeaders({
+                  'Authorization': 'Bearer $accessToken',
+                }),
               ))
           .withAutomaticReconnect(
-        retryDelays: [2000, 5000, 10000],
-      ).build();
+            retryDelays: [2000, 5000, 10000],
+          )
+          .configureLogging(Logger('SignalR'))
+          .build();
 
       // Set up event handlers
       _setupEventHandlers();
@@ -134,28 +151,29 @@ class SignalRService {
   void _setupEventHandlers() {
     if (_hubConnection == null) return;
 
-    _hubConnection!.onclose((Exception? error) {
+    // Connection state handlers
+    _hubConnection!.onclose(({Exception? error}) {
       log('SignalR connection closed: $error');
       _isConnected = false;
       _connectionId = null;
       _connectionStateController.add(ConnectionState.disconnected);
       _scheduleReconnect();
-    } as ClosedCallback);
+    });
 
-    _hubConnection!.onreconnecting((Exception? error) {
+    _hubConnection!.onreconnecting(({Exception? error}) {
       log('SignalR reconnecting: $error');
       _isConnected = false;
       _connectionStateController.add(ConnectionState.reconnecting);
-    } as ReconnectingCallback);
+    });
 
-    _hubConnection!.onreconnected((String? connectionId) {
+    _hubConnection!.onreconnected(({String? connectionId}) {
       log('SignalR reconnected. New connection ID: $connectionId');
       _isConnected = true;
       _connectionId = connectionId;
       _retryAttempt = 0;
       _connectionStateController.add(ConnectionState.connected);
       _processMessageQueue();
-    } as ReconnectedCallback);
+    });
 
     // Message handlers
     _hubConnection!.on('ReceiveMessage', (arguments) {
@@ -403,4 +421,5 @@ enum ConnectionState {
   connecting,
   connected,
   reconnecting,
+  waiting,
 }

@@ -1,13 +1,18 @@
 import 'package:e_learning_app/core/model/match_response.dart';
 import 'package:e_learning_app/core/service/matching_service.dart';
+import 'package:e_learning_app/core/service/signalr_service.dart';
+import 'package:e_learning_app/core/service/webrtc_service.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/service/auth_service.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_state.dart';
 import 'package:e_learning_app/feature/language/presentation/view/language_view.dart';
 import 'package:e_learning_app/feature/messages/presentation/views/chat_screen.dart';
-import 'package:flutter/material.dart';
+import 'package:e_learning_app/feature/call/presentation/views/call_screen.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'dart:async';
+import 'dart:developer';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,18 +21,267 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final MatchingService _matchingService;
+  late final SignalRService _signalRService;
+  late final WebRTCService _webRTCService;
+
   bool _isSearchingForMatch = false;
   String _currentSearchType = '';
+  Timer? _matchTimeoutTimer;
+  StreamSubscription? _matchFoundSubscription;
+  StreamSubscription? _connectionStateSubscription;
+  StreamSubscription? _webRtcSignalSubscription;
+
+  ConnectionState _signalRConnectionState = ConnectionState.disconnected;
+  MatchResponse? _currentMatch;
+
+  // Match timeout duration (30 seconds)
+  static const Duration _matchTimeout = Duration(seconds: 30);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeServices();
+    _setupSignalRListeners();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cleanupSubscriptions();
+    _matchTimeoutTimer?.cancel();
+    _signalRService.disconnect();
+    _webRTCService.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _reconnectSignalRIfNeeded();
+        break;
+      case AppLifecycleState.paused:
+        _pauseServices();
+        break;
+      case AppLifecycleState.detached:
+        _signalRService.disconnect();
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _initializeServices() {
     _matchingService = MatchingService(
       dioConsumer: context.read<DioConsumer>(),
       authService: context.read<AuthService>(),
     );
+
+    _signalRService = SignalRService();
+    _webRTCService = WebRTCService();
+  }
+
+  void _setupSignalRListeners() {
+    // Listen for match found events
+    _matchFoundSubscription = _signalRService.onMatchFound.listen((matchData) {
+      _handleMatchFound(matchData);
+    });
+
+    // Listen for connection state changes
+    _connectionStateSubscription =
+        _signalRService.onConnectionStateChanged.listen((state) {
+      setState(() {
+        _signalRConnectionState = state;
+      });
+    });
+
+    // Listen for WebRTC signals
+    _webRtcSignalSubscription = _signalRService.onWebRtcSignal.listen((signal) {
+      _handleWebRtcSignal(signal);
+    });
+  }
+
+  void _cleanupSubscriptions() {
+    _matchFoundSubscription?.cancel();
+    _connectionStateSubscription?.cancel();
+    _webRtcSignalSubscription?.cancel();
+  }
+
+  Future<void> _initializeSignalRConnection() async {
+    final authCubit = context.read<AuthCubit>();
+    final state = authCubit.state;
+
+    if (state is AuthAuthenticated || state is LoginSuccess) {
+      final user = state is AuthAuthenticated
+          ? state.user
+          : (state as LoginSuccess).user;
+      final accessToken = await context.read<AuthService>().getAccessToken();
+
+      if (accessToken != null) {
+        await _signalRService.initialize(
+          userId: user.userId,
+          accessToken: accessToken,
+          enableAutoReconnect: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _reconnectSignalRIfNeeded() async {
+    if (!_signalRService.isConnected && !_signalRService.isConnecting) {
+      await _initializeSignalRConnection();
+    }
+  }
+
+  void _pauseServices() {
+    if (_isSearchingForMatch) {
+      _cancelSearch();
+    }
+  }
+
+  void _handleMatchFound(Map<String, dynamic> matchData) {
+    try {
+      final match = MatchResponse.fromJson(matchData);
+
+      setState(() {
+        _isSearchingForMatch = false;
+        _currentMatch = match;
+      });
+
+      _matchTimeoutTimer?.cancel();
+
+      // Show match found dialog
+      _showMatchFoundDialog(match);
+    } catch (e) {
+      log('Error parsing match data: $e');
+      _handleMatchError('Invalid match data received');
+    }
+  }
+
+  void _handleWebRtcSignal(String signal) {
+    if (_currentMatch != null) {
+      _webRTCService.handleSignal(signal);
+    }
+  }
+
+  void _showMatchFoundDialog(MatchResponse match) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Match Found!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundImage: match.matchedUser.profilePicture != null
+                  ? NetworkImage(match.matchedUser.profilePicture!)
+                  : null,
+              child: match.matchedUser.profilePicture == null
+                  ? Text(
+                      match.matchedUser.username[0].toUpperCase(),
+                      style: const TextStyle(fontSize: 24),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              match.matchedUser.username,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Match Type: ${match.matchType.toUpperCase()}',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _declineMatch(match),
+            child: const Text('Decline'),
+          ),
+          ElevatedButton(
+            onPressed: () => _acceptMatch(match),
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _acceptMatch(MatchResponse match) async {
+    Navigator.pop(context); // Close dialog
+
+    try {
+      if (match.matchType == 'text') {
+        // Navigate to chat screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              match: match,
+              matchingService: _matchingService,
+            ),
+          ),
+        );
+      } else {
+        // Initialize WebRTC and navigate to call screen
+        await _webRTCService.initialize();
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CallScreen(
+              match: match,
+              webRTCService: _webRTCService,
+              signalRService: _signalRService,
+              isVideo: match.matchType == 'video',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      log('Error accepting match: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to start ${match.matchType}: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _declineMatch(MatchResponse match) async {
+    Navigator.pop(context); // Close dialog
+
+    try {
+      await _matchingService.endMatch(match.id);
+      setState(() {
+        _currentMatch = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Match declined'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } catch (e) {
+      log('Error declining match: $e');
+    }
   }
 
   @override
@@ -42,6 +296,8 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 const SizedBox(height: 20),
                 _buildHeader(),
+                const SizedBox(height: 10),
+                _buildConnectionStatus(),
                 const SizedBox(height: 10),
                 if (_isSearchingForMatch) _buildSearchingIndicator(),
                 const SizedBox(height: 20),
@@ -124,6 +380,77 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildConnectionStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: _getConnectionStatusColor().withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _getConnectionStatusColor().withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: _getConnectionStatusColor(),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _getConnectionStatusText(),
+              style: TextStyle(
+                color: _getConnectionStatusColor(),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_signalRConnectionState == ConnectionState.disconnected)
+            TextButton(
+              onPressed: _reconnectSignalRIfNeeded,
+              child: const Text('Reconnect'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Color _getConnectionStatusColor() {
+    switch (_signalRConnectionState) {
+      case ConnectionState.connected:
+        return Colors.green;
+      case ConnectionState.connecting:
+      case ConnectionState.reconnecting:
+        return Colors.orange;
+      case ConnectionState.disconnected:
+        return Colors.red;
+      case ConnectionState.waiting:
+        // TODO: Handle this case.
+        throw UnimplementedError();
+    }
+  }
+
+  String _getConnectionStatusText() {
+    switch (_signalRConnectionState) {
+      case ConnectionState.connected:
+        return 'Connected • Ready for matching';
+      case ConnectionState.connecting:
+        return 'Connecting...';
+      case ConnectionState.reconnecting:
+        return 'Reconnecting...';
+      case ConnectionState.disconnected:
+        return 'Disconnected • Matching unavailable';
+      case ConnectionState.waiting:
+        // TODO: Handle this case.
+        throw UnimplementedError();
+    }
+  }
+
   Widget _buildSearchingIndicator() {
     return Container(
       width: double.infinity,
@@ -144,14 +471,28 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            'Searching for $_currentSearchType match...',
-            style: const TextStyle(
-              color: Colors.blue,
-              fontWeight: FontWeight.w500,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Searching for $_currentSearchType match...',
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This may take up to 30 seconds',
+                  style: TextStyle(
+                    color: Colors.blue.withOpacity(0.7),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ),
-          const Spacer(),
           TextButton(
             onPressed: _cancelSearch,
             child: const Text('Cancel'),
@@ -181,6 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.videocam_rounded,
           onTap: () => _handleFeatureAccess(context, 'video'),
           isLoading: _isSearchingForMatch && _currentSearchType == 'video',
+          isEnabled: _signalRConnectionState == ConnectionState.connected,
         ),
         const SizedBox(height: 16),
         // Voice Call Button
@@ -191,6 +533,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.mic_rounded,
           onTap: () => _handleFeatureAccess(context, 'voice'),
           isLoading: _isSearchingForMatch && _currentSearchType == 'voice',
+          isEnabled: _signalRConnectionState == ConnectionState.connected,
         ),
         const SizedBox(height: 16),
         // Chat Button
@@ -201,6 +544,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.chat_bubble_outline_rounded,
           onTap: () => _handleFeatureAccess(context, 'text'),
           isLoading: _isSearchingForMatch && _currentSearchType == 'text',
+          isEnabled: _signalRConnectionState == ConnectionState.connected,
         ),
       ],
     );
@@ -377,14 +721,19 @@ class _HomeScreenState extends State<HomeScreen> {
     required IconData icon,
     required VoidCallback onTap,
     bool isLoading = false,
+    bool isEnabled = true,
   }) {
     return GestureDetector(
-      onTap: isLoading ? null : onTap,
+      onTap: isLoading || !isEnabled ? null : onTap,
       child: Container(
         width: double.infinity,
         height: 80,
         decoration: BoxDecoration(
-          color: isLoading ? color.withOpacity(0.6) : color,
+          color: !isEnabled
+              ? Colors.grey[400]
+              : isLoading
+                  ? color.withOpacity(0.6)
+                  : color,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -427,7 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   Text(
-                    subtitle,
+                    !isEnabled ? 'Connection required' : subtitle,
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
@@ -436,7 +785,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               const Spacer(),
-              if (!isLoading)
+              if (!isLoading && isEnabled)
                 const Icon(
                   Icons.arrow_forward_ios,
                   color: Colors.white70,
@@ -491,11 +840,36 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    if (_signalRConnectionState != ConnectionState.connected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait for connection to be established'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     if (_isSearchingForMatch) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Already searching for a match'),
           backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Initialize SignalR connection if not already connected
+    if (!_signalRService.isConnected) {
+      await _initializeSignalRConnection();
+    }
+
+    if (!_signalRService.isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to connect to matching service'),
+          backgroundColor: Colors.red,
         ),
       );
       return;
@@ -507,52 +881,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      await authCubit.validateAndRefreshToken();
-
-      if (!mounted) return;
-
-      final currentState = authCubit.state;
-      if (currentState is! AuthAuthenticated) {
-        setState(() {
-          _isSearchingForMatch = false;
-          _currentSearchType = '';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Session expired. Please login again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final match = await _matchingService.findMatch(matchType);
-
-      if (!mounted) return;
-
-      setState(() {
-        _isSearchingForMatch = false;
-        _currentSearchType = '';
+      // Start match timeout timer
+      _matchTimeoutTimer = Timer(_matchTimeout, () {
+        _handleMatchTimeout();
       });
 
-      if (match != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              match: match,
-              matchingService: _matchingService,
-            ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No match found. Please try again later.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+      // Request match through SignalR
+      final success = await _signalRService.requestMatch(matchType);
+
+      if (!success) {
+        throw Exception('Failed to request match');
       }
+
+      log('Match request sent for type: $matchType');
     } catch (e) {
       if (!mounted) return;
 
@@ -561,13 +902,49 @@ class _HomeScreenState extends State<HomeScreen> {
         _currentSearchType = '';
       });
 
+      _matchTimeoutTimer?.cancel();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to find match: ${e.toString()}'),
+          content: Text('Failed to request match: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
     }
+  }
+
+  void _handleMatchTimeout() {
+    if (!mounted) return;
+
+    setState(() {
+      _isSearchingForMatch = false;
+      _currentSearchType = '';
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No match found. Please try again later.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  void _handleMatchError(String error) {
+    if (!mounted) return;
+
+    setState(() {
+      _isSearchingForMatch = false;
+      _currentSearchType = '';
+    });
+
+    _matchTimeoutTimer?.cancel();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
   void _cancelSearch() {
@@ -575,6 +952,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _isSearchingForMatch = false;
       _currentSearchType = '';
     });
+
+    _matchTimeoutTimer?.cancel();
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -585,15 +964,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _resumeMatch(MatchResponse match) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatScreen(
-          match: match,
-          matchingService: _matchingService,
+    if (match.matchType == 'text') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            match: match,
+            matchingService: _matchingService,
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      // Resume video/voice call
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CallScreen(
+            match: match,
+            webRTCService: _webRTCService,
+            signalRService: _signalRService,
+            isVideo: match.matchType == 'video',
+          ),
+        ),
+      );
+    }
   }
 
   void _endMatch(MatchResponse match) async {
