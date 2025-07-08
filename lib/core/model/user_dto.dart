@@ -19,4 +19,13 @@ class UserDto {
       languages: json['languages']?.cast<String>(),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'username': username,
+      'profilePicture': profilePicture,
+      'languages': languages,
+    };
+  }
 }

@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
 import 'package:e_learning_app/core/model/api_response_model.dart';
-import 'package:e_learning_app/core/model/interest_update_request.dart';
 import 'package:e_learning_app/feature/language/data/language_state.dart';
 
 class InterestService {
@@ -175,11 +174,9 @@ class InterestService {
 
   String _extractErrorMessage(DioException e) {
     if (e.response?.data != null) {
-      // Try to extract error message from response data
       final responseData = e.response!.data;
 
       if (responseData is Map<String, dynamic>) {
-        // Check common error message fields
         if (responseData.containsKey('message')) {
           return responseData['message'].toString();
         }

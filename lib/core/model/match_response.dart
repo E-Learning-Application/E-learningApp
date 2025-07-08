@@ -24,4 +24,14 @@ class MatchResponse {
       isActive: json['isActive'],
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'matchedUser': matchedUser.toJson(),
+      'matchType': matchType,
+      'createdAt': createdAt.toIso8601String(),
+      'isActive': isActive,
+    };
+  }
 }

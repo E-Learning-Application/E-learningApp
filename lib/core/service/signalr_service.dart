@@ -8,7 +8,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:logging/logging.dart';
 
 class SignalRService {
-  // FIXED: Updated hub URL to match ChatHub instead of messageHub
   static const String _hubUrl = 'https://elearningproject.runasp.net/chatHub';
   static const int _maxRetryAttempts = 3;
   static const int _reconnectDelay = 2000;
@@ -19,6 +18,9 @@ class SignalRService {
   String? _connectionId;
   int? _currentUserId;
   String? _accessToken;
+
+  // Available server methods (hardcoded based on server implementation)
+  Set<String> _availableServerMethods = {'RequestMatchAsync'};
 
   // Retry mechanism
   int _retryAttempt = 0;
@@ -40,6 +42,8 @@ class SignalRService {
       StreamController<String>.broadcast();
   final StreamController<ConnectionState> _connectionStateController =
       StreamController<ConnectionState>.broadcast();
+  final StreamController<String> _matchRequestStatusController =
+      StreamController<String>.broadcast();
 
   // Public streams
   Stream<Message> get onMessageReceived => _messageReceivedController.stream;
@@ -47,6 +51,8 @@ class SignalRService {
   Stream<String> get onWebRtcSignal => _webRtcSignalController.stream;
   Stream<ConnectionState> get onConnectionStateChanged =>
       _connectionStateController.stream;
+  Stream<String> get onMatchRequestStatus =>
+      _matchRequestStatusController.stream;
 
   // Getters
   bool get isConnected => _isConnected;
@@ -54,6 +60,7 @@ class SignalRService {
   String? get connectionId => _connectionId;
   int? get currentUserId => _currentUserId;
   int get queuedMessagesCount => _messageQueue.length;
+  Set<String> get availableServerMethods => Set.from(_availableServerMethods);
 
   /// Helper method to create MessageHeaders
   MessageHeaders _createMessageHeaders(Map<String, String> headers) {
@@ -93,8 +100,7 @@ class SignalRService {
               options: HttpConnectionOptions(
                 accessTokenFactory: () => Future.value(accessToken),
                 transport: HttpTransportType.WebSockets,
-                skipNegotiation:
-                    false, // Changed to false for better compatibility
+                skipNegotiation: false,
                 requestTimeout: 30000,
                 headers: _createMessageHeaders({
                   'Authorization': 'Bearer $accessToken',
@@ -156,6 +162,7 @@ class SignalRService {
       log('SignalR connection closed: $error');
       _isConnected = false;
       _connectionId = null;
+      _availableServerMethods.clear();
       _connectionStateController.add(ConnectionState.disconnected);
       _scheduleReconnect();
     });
@@ -214,6 +221,53 @@ class SignalRService {
         log('Error parsing WebRTC signal: $e');
       }
     });
+
+    // Enhanced match request handlers
+    _hubConnection!.on('MatchRequestReceived', (arguments) {
+      try {
+        if (arguments == null || arguments.isEmpty) return;
+        final matchType = arguments[0] as String;
+        _matchRequestStatusController
+            .add('Match request received for: $matchType');
+        log('Match request received for type: $matchType');
+      } catch (e) {
+        log('Error parsing match request confirmation: $e');
+      }
+    });
+
+    _hubConnection!.on('MatchRequestError', (arguments) {
+      try {
+        if (arguments == null || arguments.isEmpty) return;
+        final error = arguments[0] as String;
+        _matchRequestStatusController.add('Match request error: $error');
+        log('Match request error: $error');
+      } catch (e) {
+        log('Error parsing match request error: $e');
+      }
+    });
+
+    // Additional match-related events
+    _hubConnection!.on('MatchRequestSuccess', (arguments) {
+      try {
+        if (arguments == null || arguments.isEmpty) return;
+        final message = arguments[0] as String;
+        _matchRequestStatusController.add('Match request successful: $message');
+        log('Match request successful: $message');
+      } catch (e) {
+        log('Error parsing match request success: $e');
+      }
+    });
+
+    _hubConnection!.on('QueueJoined', (arguments) {
+      try {
+        if (arguments == null || arguments.isEmpty) return;
+        final queueInfo = arguments[0] as String;
+        _matchRequestStatusController.add('Joined queue: $queueInfo');
+        log('Joined queue: $queueInfo');
+      } catch (e) {
+        log('Error parsing queue joined: $e');
+      }
+    });
   }
 
   /// Send message with retry logic
@@ -238,7 +292,7 @@ class SignalRService {
     // Retry logic
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        await _hubConnection!.invoke('SendMessageAsync', args: [
+        await _hubConnection!.invoke('SendMessage', args: [
           receiverId,
           content,
         ]).timeout(const Duration(seconds: 10));
@@ -260,16 +314,35 @@ class SignalRService {
     return false;
   }
 
-  /// Request match
+  /// Request match with correct method and error handling
   Future<bool> requestMatch(String matchType) async {
     try {
-      if (!_isConnected || _hubConnection == null) return false;
+      if (!_isConnected || _hubConnection == null) {
+        log('SignalR not connected, cannot request match');
+        return false;
+      }
 
-      await _hubConnection!.invoke('RequestMatchAsync', args: [matchType]);
-      log('Match request sent for type: $matchType');
-      return true;
+      log('Requesting match for type: $matchType');
+
+      // Only try the supported method
+      try {
+        await _hubConnection!.invoke(
+          'RequestMatchAsync',
+          args: [matchType],
+        ).timeout(
+          const Duration(seconds: 10),
+        );
+
+        log('Match request sent successfully using method: RequestMatchAsync');
+        return true;
+      } catch (e) {
+        log('RequestMatchAsync failed: $e');
+        _matchRequestStatusController.add('Match request error: $e');
+        return false;
+      }
     } catch (e) {
       log('Error requesting match: $e');
+      _matchRequestStatusController.add('Match request error: $e');
       return false;
     }
   }
@@ -315,6 +388,25 @@ class SignalRService {
     }
 
     log('Processed ${messagesToProcess.length} queued messages');
+  }
+
+  /// Test connection with server
+  Future<bool> testConnection() async {
+    try {
+      if (!_isConnected || _hubConnection == null) return false;
+
+      // Try to invoke a method that exists, or just check connection state
+      if (_hubConnection!.state == HubConnectionState.Connected) {
+        log('Connection test successful - SignalR is connected');
+        return true;
+      } else {
+        log('Connection test failed - SignalR not in connected state: ${_hubConnection!.state}');
+        return false;
+      }
+    } catch (e) {
+      log('Connection test failed: $e');
+      return false;
+    }
   }
 
   /// Connectivity monitoring
@@ -384,6 +476,7 @@ class SignalRService {
         await _hubConnection!.stop();
         _isConnected = false;
         _connectionId = null;
+        _availableServerMethods.clear();
         _connectionStateController.add(ConnectionState.disconnected);
         log('SignalR disconnected');
       }
@@ -398,6 +491,7 @@ class SignalRService {
     _matchFoundController.close();
     _webRtcSignalController.close();
     _connectionStateController.close();
+    _matchRequestStatusController.close();
     _messageQueue.clear();
     disconnect();
   }
@@ -411,6 +505,7 @@ class SignalRService {
       'retryAttempt': _retryAttempt,
       'queuedMessages': _messageQueue.length,
       'currentUserId': _currentUserId,
+      'availableServerMethods': _availableServerMethods.toList(),
     };
   }
 }

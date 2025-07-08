@@ -146,7 +146,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _handleMatchFound(Map<String, dynamic> matchData) {
     try {
+      log('Match found data received: $matchData');
       final match = MatchResponse.fromJson(matchData);
+      log('Parsed match: ${match.matchedUser.username} (${match.matchType})');
 
       setState(() {
         _isSearchingForMatch = false;
@@ -298,6 +300,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 _buildHeader(),
                 const SizedBox(height: 10),
                 _buildConnectionStatus(),
+                // const SizedBox(height: 10),
+                // _buildDebugSection(),
                 const SizedBox(height: 10),
                 if (_isSearchingForMatch) _buildSearchingIndicator(),
                 const SizedBox(height: 20),
@@ -840,36 +844,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    if (_signalRConnectionState != ConnectionState.connected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please wait for connection to be established'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
     if (_isSearchingForMatch) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Already searching for a match'),
           backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Initialize SignalR connection if not already connected
-    if (!_signalRService.isConnected) {
-      await _initializeSignalRConnection();
-    }
-
-    if (!_signalRService.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to connect to matching service'),
-          backgroundColor: Colors.red,
         ),
       );
       return;
@@ -886,14 +865,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _handleMatchTimeout();
       });
 
-      // Request match through SignalR
-      final success = await _signalRService.requestMatch(matchType);
+      log('Requesting match via REST API for type: $matchType');
 
-      if (!success) {
-        throw Exception('Failed to request match');
+      // Try REST API first, then SignalR as fallback
+      MatchResponse? match;
+      try {
+        match = await _matchingService.findMatch(matchType);
+        log('REST API call completed');
+      } catch (e) {
+        log('REST API call failed with exception: $e');
+        match = null;
       }
 
-      log('Match request sent for type: $matchType');
+      if (match == null) {
+        log('No immediate match found via REST API - this is normal if no other users are available');
+      }
+
+      if (match != null) {
+        // Match found via REST API
+        log('Match found via REST API: ${match.matchedUser.username}');
+        _handleMatchFound(match.toJson());
+      } else {
+        // No match found via REST API, try SignalR
+        log('No match found via REST API, trying SignalR...');
+
+        if (_signalRConnectionState != ConnectionState.connected) {
+          // Initialize SignalR connection if not already connected
+          if (!_signalRService.isConnected) {
+            await _initializeSignalRConnection();
+          }
+
+          if (!_signalRService.isConnected) {
+            throw Exception('Unable to connect to matching service');
+          }
+        }
+
+        // Request match through SignalR
+        final success = await _signalRService.requestMatch(matchType);
+
+        if (!success) {
+          throw Exception('Failed to request match via SignalR');
+        }
+
+        log('Match request sent via SignalR for type: $matchType');
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -1050,6 +1065,106 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return await _matchingService.getMatches();
     } catch (e) {
       throw Exception('Failed to load matches: $e');
+    }
+  }
+
+  Widget _buildDebugSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Debug Tools',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _testServerConnection,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: const Text(
+                    'Test Server',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _testSignalRConnection,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: const Text(
+                    'Test SignalR',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _testServerConnection() async {
+    try {
+      final result = await _matchingService.testServerConnection();
+      if (result != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Server Test: ${result['status']} - User: ${result['currentUser']} - Matches: ${result['matches']}'),
+            backgroundColor:
+                result['status'] == 'connected' ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Server Test Failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _testSignalRConnection() async {
+    try {
+      final success = await _signalRService.testConnection();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('SignalR Test: ${success ? 'Connected' : 'Failed'}'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('SignalR Test Failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
