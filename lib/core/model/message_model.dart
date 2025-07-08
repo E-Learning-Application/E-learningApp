@@ -1,78 +1,27 @@
-// lib/core/models/message_models.dart
+enum MessageStatus {
+  sending,
+  sent,
+  delivered,
+  read,
+  failed,
+}
 
-class Message {
-  final int id;
-  final int senderId;
-  final int receiverId;
-  final String content;
-  final DateTime timestamp;
-  final bool isRead;
-  final String messageType; // text, image, file, etc.
-  final String? senderName;
-  final String? senderProfileImage;
+class MessageWithStatus {
+  final Message message;
+  final MessageStatus status;
 
-  Message({
-    required this.id,
-    required this.senderId,
-    required this.receiverId,
-    required this.content,
-    required this.timestamp,
-    required this.isRead,
-    required this.messageType,
-    this.senderName,
-    this.senderProfileImage,
+  MessageWithStatus({
+    required this.message,
+    required this.status,
   });
 
-  factory Message.fromJson(Map<String, dynamic> json) {
-    return Message(
-      id: json['id'] ?? 0,
-      senderId: json['senderId'] ?? 0,
-      receiverId: json['receiverId'] ?? 0,
-      content: json['content'] ?? '',
-      timestamp:
-          DateTime.parse(json['timestamp'] ?? DateTime.now().toIso8601String()),
-      isRead: json['isRead'] ?? false,
-      messageType: json['messageType'] ?? 'text',
-      senderName: json['senderName'],
-      senderProfileImage: json['senderProfileImage'],
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'senderId': senderId,
-      'receiverId': receiverId,
-      'content': content,
-      'timestamp': timestamp.toIso8601String(),
-      'isRead': isRead,
-      'messageType': messageType,
-      'senderName': senderName,
-      'senderProfileImage': senderProfileImage,
-    };
-  }
-
-  Message copyWith({
-    int? id,
-    int? senderId,
-    int? receiverId,
-    String? content,
-    DateTime? timestamp,
-    bool? isRead,
-    String? messageType,
-    String? senderName,
-    String? senderProfileImage,
+  MessageWithStatus copyWith({
+    Message? message,
+    MessageStatus? status,
   }) {
-    return Message(
-      id: id ?? this.id,
-      senderId: senderId ?? this.senderId,
-      receiverId: receiverId ?? this.receiverId,
-      content: content ?? this.content,
-      timestamp: timestamp ?? this.timestamp,
-      isRead: isRead ?? this.isRead,
-      messageType: messageType ?? this.messageType,
-      senderName: senderName ?? this.senderName,
-      senderProfileImage: senderProfileImage ?? this.senderProfileImage,
+    return MessageWithStatus(
+      message: message ?? this.message,
+      status: status ?? this.status,
     );
   }
 }
@@ -99,7 +48,7 @@ class ChatSummary {
   factory ChatSummary.fromJson(Map<String, dynamic> json) {
     return ChatSummary(
       userId: json['userId'] ?? 0,
-      userName: json['userName'] ?? 'Unknown',
+      userName: json['userName'] ?? '',
       profileImage: json['profileImage'],
       lastMessage: json['lastMessage'] ?? '',
       lastMessageTime: DateTime.parse(
@@ -107,6 +56,18 @@ class ChatSummary {
       unreadCount: json['unreadCount'] ?? 0,
       isOnline: json['isOnline'] ?? false,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'userId': userId,
+      'userName': userName,
+      'profileImage': profileImage,
+      'lastMessage': lastMessage,
+      'lastMessageTime': lastMessageTime.toIso8601String(),
+      'unreadCount': unreadCount,
+      'isOnline': isOnline,
+    };
   }
 }
 
@@ -130,95 +91,47 @@ class SendMessageRequest {
   }
 }
 
-class UserMatch {
+class Message {
   final int id;
-  final int userId1;
-  final int userId2;
-  final String matchType;
-  final DateTime createdAt;
-  final bool isActive;
-  final String? matchedUserName;
-  final String? matchedUserProfileImage;
-  final bool? matchedUserIsOnline;
+  final int senderId;
+  final int receiverId;
+  final String content;
+  final DateTime timestamp;
+  final bool isRead;
+  final String messageType;
 
-  UserMatch({
+  Message({
     required this.id,
-    required this.userId1,
-    required this.userId2,
-    required this.matchType,
-    required this.createdAt,
-    required this.isActive,
-    this.matchedUserName,
-    this.matchedUserProfileImage,
-    this.matchedUserIsOnline,
+    required this.senderId,
+    required this.receiverId,
+    required this.content,
+    required this.timestamp,
+    required this.isRead,
+    this.messageType = 'text',
   });
 
-  factory UserMatch.fromJson(Map<String, dynamic> json) {
-    return UserMatch(
+  factory Message.fromJson(Map<String, dynamic> json) {
+    return Message(
       id: json['id'] ?? 0,
-      userId1: json['userId1'] ?? 0,
-      userId2: json['userId2'] ?? 0,
-      matchType: json['matchType'] ?? 'text',
-      createdAt:
-          DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
-      isActive: json['isActive'] ?? false,
-      matchedUserName: json['matchedUserName'],
-      matchedUserProfileImage: json['matchedUserProfileImage'],
-      matchedUserIsOnline: json['matchedUserIsOnline'],
+      senderId: json['senderId'] ?? 0,
+      receiverId: json['receiverId'] ?? 0,
+      content: json['content'] ?? '',
+      timestamp:
+          DateTime.parse(json['timestamp'] ?? DateTime.now().toIso8601String()),
+      isRead: json['isRead'] ?? false,
+      messageType: json['messageType'] ?? 'text',
     );
   }
-}
-
-class UserMatchRequest {
-  final int userId;
-  final String matchType;
-
-  UserMatchRequest({
-    required this.userId,
-    required this.matchType,
-  });
 
   Map<String, dynamic> toJson() {
     return {
-      'userId': userId,
-      'matchType': matchType,
+      'id': id,
+      'senderId': senderId,
+      'receiverId': receiverId,
+      'content': content,
+      'timestamp': timestamp.toIso8601String(),
+      'isRead': isRead,
+      'messageType': messageType,
     };
-  }
-}
-
-enum MatchType {
-  text('text'),
-  voice('voice'),
-  video('video');
-
-  const MatchType(this.value);
-  final String value;
-}
-
-enum MessageStatus {
-  sending,
-  sent,
-  delivered,
-  read,
-  failed,
-}
-
-class MessageWithStatus {
-  final Message message;
-  final MessageStatus status;
-
-  MessageWithStatus({
-    required this.message,
-    required this.status,
-  });
-
-  MessageWithStatus copyWith({
-    Message? message,
-    MessageStatus? status,
-  }) {
-    return MessageWithStatus(
-      message: message ?? this.message,
-      status: status ?? this.status,
-    );
   }
 }

@@ -34,28 +34,14 @@ class MessageCubit extends Cubit<MessageState> {
       _handleNewMessage(message);
     });
 
-    // Listen for message status updates
-    _signalRService.onMessageStatusUpdated.listen((data) {
-      _handleMessageStatusUpdate(data['messageId'], data['status']);
-    });
-
-    // Listen for user online status changes
-    _signalRService.onUserOnlineStatusChanged.listen((data) {
-      _handleUserOnlineStatusChange(data['userId'], data['isOnline']);
-    });
-
-    // Listen for typing indicators
-    _signalRService.onUserTyping.listen((data) {
-      _handleTypingIndicator(data['userId'], data['isTyping']);
-    });
-
     // Listen for match events
     _signalRService.onMatchFound.listen((data) {
       _handleMatchFound(data);
     });
 
-    _signalRService.onMatchEnded.listen((data) {
-      _handleMatchEnded(data);
+    _signalRService.onWebRtcSignal.listen((signal) {
+      // Handle WebRTC signal if needed
+      log('WebRTC signal received: $signal');
     });
   }
 
@@ -65,7 +51,7 @@ class MessageCubit extends Cubit<MessageState> {
       emit(MessageLoading());
 
       final chats = await _messageService.getChatList();
-      final unreadCount = await _messageService.getUnreadCount();
+      final unreadCount = await _getUnreadCount();
 
       _chatList = chats;
       _totalUnreadCount = unreadCount;
@@ -89,12 +75,16 @@ class MessageCubit extends Cubit<MessageState> {
     try {
       emit(MessageLoading());
 
-      final messages = await _messageService.getChatWith(otherUserId);
+      final messages = await _messageService.getChatHistory(
+        withUserId: otherUserId,
+        page: 1,
+        pageSize: 50,
+      );
+
       final messagesWithStatus = messages
           .map((msg) => MessageWithStatus(
                 message: msg,
-                status:
-                    msg.isRead ? MessageStatus.read : MessageStatus.delivered,
+                status: _getMessageStatusFromMessage(msg),
               ))
           .toList();
 
@@ -160,29 +150,47 @@ class MessageCubit extends Cubit<MessageState> {
       _addMessageToChat(receiverId, messageWithStatus);
       emit(MessageSending(message: messageWithStatus));
 
-      // Send via SignalR
-      final success = await _signalRService.sendMessage(
+      final signalRSuccess = await _signalRService.sendMessage(
         receiverId: receiverId,
         content: content,
-        messageType: messageType,
       );
 
-      if (success) {
+      if (signalRSuccess) {
         // Update message status to sent
         _updateMessageStatus(tempMessage.id, MessageStatus.sent);
         emit(MessageSent(message: tempMessage));
-
-        // Refresh current chat if viewing this conversation
-        if (_currentChatUserId == receiverId) {
-          await _refreshCurrentChat();
-        }
       } else {
-        // Update message status to failed
-        _updateMessageStatus(tempMessage.id, MessageStatus.failed);
-        emit(MessageSendFailed(
+        // Fallback to REST API
+        final sendRequest = SendMessageRequest(
+          receiverId: receiverId,
           content: content,
-          errorMessage: 'Failed to send message',
-        ));
+          messageType: messageType,
+        );
+
+        final sentMessage = await _messageService.sendMessage(sendRequest);
+
+        if (sentMessage != null) {
+          // Replace temporary message with actual message
+          _removeMessageFromChat(receiverId, tempMessage.id);
+          _addMessageToChat(
+              receiverId,
+              MessageWithStatus(
+                message: sentMessage,
+                status: MessageStatus.sent,
+              ));
+          emit(MessageSent(message: sentMessage));
+        } else {
+          _updateMessageStatus(tempMessage.id, MessageStatus.failed);
+          emit(MessageSendFailed(
+            content: content,
+            errorMessage: 'Failed to send message',
+          ));
+        }
+      }
+
+      // Refresh current chat if viewing this conversation
+      if (_currentChatUserId == receiverId) {
+        await _refreshCurrentChat();
       }
     } catch (e) {
       log('Error sending message: $e');
@@ -193,23 +201,21 @@ class MessageCubit extends Cubit<MessageState> {
     }
   }
 
-  // Send typing indicator
   Future<void> sendTypingIndicator(int receiverId, bool isTyping) async {
     try {
-      await _signalRService.sendTypingIndicator(
-        receiverId: receiverId,
-        isTyping: isTyping,
-      );
+      _userTypingStatus[receiverId] = isTyping;
 
       // Auto-stop typing after 3 seconds
       if (isTyping) {
         _typingTimer?.cancel();
         _typingTimer = Timer(const Duration(seconds: 3), () {
-          sendTypingIndicator(receiverId, false);
+          _userTypingStatus[receiverId] = false;
         });
       } else {
         _typingTimer?.cancel();
       }
+
+      log('Typing indicator: User $receiverId is ${isTyping ? 'typing' : 'not typing'}');
     } catch (e) {
       log('Error sending typing indicator: $e');
     }
@@ -220,14 +226,39 @@ class MessageCubit extends Cubit<MessageState> {
     try {
       final success = await _messageService.markMessageAsRead(messageId);
       if (success) {
-        // Also notify via SignalR
-        await _signalRService.markMessageAsRead(messageId);
-
+        _updateMessageStatus(messageId, MessageStatus.read);
         emit(MessageMarkedAsRead(messageId: messageId));
         await _updateUnreadCount();
       }
     } catch (e) {
       log('Error marking message as read: $e');
+    }
+  }
+
+  // Mark all messages as read with a user
+  Future<void> markAllMessagesAsRead(int withUserId) async {
+    try {
+      final success = await _messageService.markAllMessagesAsRead(withUserId);
+      if (success) {
+        // Update local state
+        final messages = _chatMessages[withUserId] ?? [];
+        for (int i = 0; i < messages.length; i++) {
+          if (messages[i].message.receiverId == _signalRService.currentUserId) {
+            _chatMessages[withUserId]![i] = messages[i].copyWith(
+              status: MessageStatus.read,
+            );
+          }
+        }
+
+        emit(MessageOperationSuccess(
+          message: 'All messages marked as read',
+          actionType: 'mark_all_read',
+        ));
+        await _updateUnreadCount();
+      }
+    } catch (e) {
+      log('Error marking all messages as read: $e');
+      emit(MessageError(message: 'Failed to mark messages as read: $e'));
     }
   }
 
@@ -256,6 +287,25 @@ class MessageCubit extends Cubit<MessageState> {
     }
   }
 
+  // Search messages
+  Future<void> searchMessages(String query) async {
+    try {
+      emit(MessageLoading());
+      final messages = await _messageService.searchMessages(query);
+
+      emit(MessageOperationSuccess(
+        message: 'Found ${messages.length} messages',
+        actionType: 'search',
+      ));
+
+      // You might want to create a specific state for search results
+      // emit(SearchResultsLoaded(messages: messages));
+    } catch (e) {
+      log('Error searching messages: $e');
+      emit(MessageError(message: 'Failed to search messages: $e'));
+    }
+  }
+
   // Get unread count
   Future<void> updateUnreadCount() async {
     await _updateUnreadCount();
@@ -278,6 +328,24 @@ class MessageCubit extends Cubit<MessageState> {
   // Get typing status for user
   bool isUserTyping(int userId) {
     return _userTypingStatus[userId] ?? false;
+  }
+
+  // Request match
+  Future<void> requestMatch(String matchType) async {
+    try {
+      final success = await _signalRService.requestMatch(matchType);
+      if (success) {
+        emit(MessageOperationSuccess(
+          message: 'Match request sent',
+          actionType: 'match_request',
+        ));
+      } else {
+        emit(MessageError(message: 'Failed to request match'));
+      }
+    } catch (e) {
+      log('Error requesting match: $e');
+      emit(MessageError(message: 'Failed to request match: $e'));
+    }
   }
 
   // Private helper methods
@@ -306,61 +374,6 @@ class MessageCubit extends Cubit<MessageState> {
     emit(NewMessageReceived(message: message));
   }
 
-  void _handleMessageStatusUpdate(int messageId, String status) {
-    MessageStatus messageStatus;
-    switch (status.toLowerCase()) {
-      case 'sent':
-        messageStatus = MessageStatus.sent;
-        break;
-      case 'delivered':
-        messageStatus = MessageStatus.delivered;
-        break;
-      case 'read':
-        messageStatus = MessageStatus.read;
-        break;
-      default:
-        messageStatus = MessageStatus.delivered;
-    }
-
-    _updateMessageStatus(messageId, messageStatus);
-    emit(MessageStatusUpdated(messageId: messageId, status: messageStatus));
-  }
-
-  void _handleUserOnlineStatusChange(int userId, bool isOnline) {
-    // Update chat list
-    final chatIndex = _chatList.indexWhere((chat) => chat.userId == userId);
-    if (chatIndex != -1) {
-      _chatList[chatIndex] = ChatSummary(
-        userId: _chatList[chatIndex].userId,
-        userName: _chatList[chatIndex].userName,
-        profileImage: _chatList[chatIndex].profileImage,
-        lastMessage: _chatList[chatIndex].lastMessage,
-        lastMessageTime: _chatList[chatIndex].lastMessageTime,
-        unreadCount: _chatList[chatIndex].unreadCount,
-        isOnline: isOnline,
-      );
-    }
-
-    emit(UserOnlineStatusChanged(userId: userId, isOnline: isOnline));
-  }
-
-  void _handleTypingIndicator(int userId, bool isTyping) {
-    _userTypingStatus[userId] = isTyping;
-
-    // Auto-clear typing status after 5 seconds
-    if (isTyping) {
-      Timer(const Duration(seconds: 5), () {
-        _userTypingStatus[userId] = false;
-      });
-    }
-
-    // Emit typing status if currently viewing this chat
-    if (_currentChatUserId == userId) {
-      emit(UserOnlineStatusChanged(
-          userId: userId, isOnline: isUserTyping(userId)));
-    }
-  }
-
   void _handleMatchFound(Map<String, dynamic> matchData) {
     // Handle match found event
     emit(MessageOperationSuccess(
@@ -369,21 +382,17 @@ class MessageCubit extends Cubit<MessageState> {
     ));
   }
 
-  void _handleMatchEnded(Map<String, dynamic> data) {
-    final matchId = data['matchId'] as int;
-    final reason = data['reason'] as String?;
-
-    emit(MessageOperationSuccess(
-      message: 'Match ended${reason != null ? ': $reason' : ''}',
-      actionType: 'match_ended',
-    ));
-  }
-
   void _addMessageToChat(int otherUserId, MessageWithStatus messageWithStatus) {
     if (!_chatMessages.containsKey(otherUserId)) {
       _chatMessages[otherUserId] = [];
     }
     _chatMessages[otherUserId]!.add(messageWithStatus);
+  }
+
+  void _removeMessageFromChat(int userId, int messageId) {
+    if (_chatMessages.containsKey(userId)) {
+      _chatMessages[userId]!.removeWhere((msg) => msg.message.id == messageId);
+    }
   }
 
   void _updateMessageStatus(int messageId, MessageStatus status) {
@@ -436,9 +445,23 @@ class MessageCubit extends Cubit<MessageState> {
     }
   }
 
+  Future<int> _getUnreadCount() async {
+    try {
+      // Calculate unread count from chat list
+      int count = 0;
+      for (final chat in _chatList) {
+        count += chat.unreadCount;
+      }
+      return count;
+    } catch (e) {
+      log('Error getting unread count: $e');
+      return 0;
+    }
+  }
+
   Future<void> _updateUnreadCount() async {
     try {
-      final count = await _messageService.getUnreadCount();
+      final count = await _getUnreadCount();
       _totalUnreadCount = count;
       emit(UnreadCountUpdated(count: count));
     } catch (e) {
@@ -450,12 +473,16 @@ class MessageCubit extends Cubit<MessageState> {
     if (_currentChatUserId == null) return;
 
     try {
-      final messages = await _messageService.getChatWith(_currentChatUserId!);
+      final messages = await _messageService.getChatHistory(
+        withUserId: _currentChatUserId!,
+        page: 1,
+        pageSize: 50,
+      );
+
       final messagesWithStatus = messages
           .map((msg) => MessageWithStatus(
                 message: msg,
-                status:
-                    msg.isRead ? MessageStatus.read : MessageStatus.delivered,
+                status: _getMessageStatusFromMessage(msg),
               ))
           .toList();
 
@@ -489,6 +516,12 @@ class MessageCubit extends Cubit<MessageState> {
     } catch (e) {
       log('Error refreshing current chat: $e');
     }
+  }
+
+  MessageStatus _getMessageStatusFromMessage(Message message) {
+    if (message.isRead) return MessageStatus.read;
+    // You might want to add more logic here based on your Message model
+    return MessageStatus.delivered;
   }
 
   @override

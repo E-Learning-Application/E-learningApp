@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:developer';
 import 'package:e_learning_app/core/model/message_model.dart';
 import 'package:e_learning_app/core/api/dio_consumer.dart';
@@ -27,23 +26,9 @@ class MessageService {
     );
   }
 
-  Future<List<Message>> getAllMessages() async {
-    try {
-      final options = await _getAuthOptions();
-      final response = await _dioConsumer.get(
-        EndPoint.getAllMessages,
-        options: options,
-      );
-
-      if (response is List) {
-        return response.map((json) => Message.fromJson(json)).toList();
-      } else {
-        throw Exception('Invalid response format');
-      }
-    } catch (e) {
-      log('Error getting all messages: $e');
-      throw Exception('Failed to load messages: $e');
-    }
+  Future<bool> _isAuthenticated() async {
+    final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
+    return accessToken != null && accessToken.isNotEmpty;
   }
 
   Future<List<ChatSummary>> getChatList() async {
@@ -65,144 +50,10 @@ class MessageService {
     }
   }
 
-  Future<List<Message>> getChatWith(int withUserId) async {
-    try {
-      final options = await _getAuthOptions();
-      final response = await _dioConsumer.get(
-        EndPoint.getChatWith,
-        queryParameters: {'withUser': withUserId},
-        options: options,
-      );
-
-      if (response is List) {
-        return response.map((json) => Message.fromJson(json)).toList();
-      } else {
-        throw Exception('Invalid response format');
-      }
-    } catch (e) {
-      log('Error getting chat with user $withUserId: $e');
-      throw Exception('Failed to load chat: $e');
-    }
-  }
-
-  Future<Message> getMessageById(int messageId) async {
-    try {
-      final options = await _getAuthOptions();
-      final response = await _dioConsumer.get(
-        '${EndPoint.getMessageById}/$messageId',
-        options: options,
-      );
-
-      if (response is Map<String, dynamic>) {
-        return Message.fromJson(response);
-      } else {
-        throw Exception('Invalid response format');
-      }
-    } catch (e) {
-      log('Error getting message by ID $messageId: $e');
-      throw Exception('Failed to load message: $e');
-    }
-  }
-
-  Future<int> getUnreadCount() async {
-    try {
-      final options = await _getAuthOptions();
-      final response = await _dioConsumer.get(
-        EndPoint.getUnreadCount,
-        options: options,
-      );
-
-      if (response is int) {
-        return response;
-      } else if (response is Map<String, dynamic> &&
-          response.containsKey('count')) {
-        return response['count'] as int;
-      } else {
-        return 0;
-      }
-    } catch (e) {
-      log('Error getting unread count: $e');
-      throw Exception('Failed to load unread count: $e');
-    }
-  }
-
-  Future<Message?> getLastMessageWith(int withUserId) async {
-    try {
-      final options = await _getAuthOptions();
-      final response = await _dioConsumer.get(
-        EndPoint.getLastMessage,
-        queryParameters: {'withUser': withUserId},
-        options: options,
-      );
-
-      if (response != null && response is Map<String, dynamic>) {
-        return Message.fromJson(response);
-      }
-      return null;
-    } catch (e) {
-      log('Error getting last message with user $withUserId: $e');
-      return null;
-    }
-  }
-
-  Future<bool> markMessageAsRead(int messageId) async {
-    try {
-      final options = await _getAuthOptions();
-      await _dioConsumer.patch(
-        '${EndPoint.markMessageAsRead}/$messageId',
-        options: options,
-      );
-      return true;
-    } catch (e) {
-      log('Error marking message as read: $e');
-      return false;
-    }
-  }
-
-  Future<bool> deleteMessage(int messageId) async {
-    try {
-      final options = await _getAuthOptions();
-      await _dioConsumer.delete(
-        '${EndPoint.deleteMessage}/$messageId',
-        options: options,
-      );
-      return true;
-    } catch (e) {
-      log('Error deleting message: $e');
-      return false;
-    }
-  }
-
-  Future<Message?> sendMessage(SendMessageRequest request) async {
-    try {
-      final options = await _getAuthOptions();
-      final response = await _dioConsumer.post(
-        EndPoint.sendMessage,
-        data: request.toJson(),
-        options: options,
-      );
-
-      if (response is Map<String, dynamic>) {
-        return Message.fromJson(response);
-      } else {
-        throw Exception('Invalid response format');
-      }
-    } catch (e) {
-      log('Error sending message: $e');
-      return null;
-    }
-  }
-
-  Future<bool> _isAuthenticated() async {
-    final accessToken = await _secureStorage.read(key: ApiKey.accessToken);
-    return accessToken != null && accessToken.isNotEmpty;
-  }
-
-  // Get messages with pagination support
-  Future<List<Message>> getMessagesWithPagination({
+  Future<List<Message>> getChatHistory({
+    required int withUserId,
     int page = 1,
     int pageSize = 20,
-    int? withUserId,
   }) async {
     try {
       if (!await _isAuthenticated()) {
@@ -210,33 +61,28 @@ class MessageService {
       }
 
       final options = await _getAuthOptions();
-      final queryParams = {
-        'page': page,
-        'pageSize': pageSize,
-      };
-
-      if (withUserId != null) {
-        queryParams['withUser'] = withUserId;
-      }
-
       final response = await _dioConsumer.get(
-        EndPoint.getMessagesWithPagination,
-        queryParameters: queryParams,
+        EndPoint.getChatWith,
+        queryParameters: {
+          'withUser': withUserId,
+          'page': page,
+          'pageSize': pageSize,
+        },
         options: options,
       );
 
-      if (response is Map<String, dynamic> &&
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
+      } else if (response is Map<String, dynamic> &&
           response.containsKey('messages')) {
         final List<dynamic> messages = response['messages'];
         return messages.map((json) => Message.fromJson(json)).toList();
-      } else if (response is List) {
-        return response.map((json) => Message.fromJson(json)).toList();
       } else {
         throw Exception('Invalid response format');
       }
     } catch (e) {
-      log('Error getting messages with pagination: $e');
-      throw Exception('Failed to load messages: $e');
+      log('Error getting chat history: $e');
+      throw Exception('Failed to load chat history: $e');
     }
   }
 
@@ -264,6 +110,40 @@ class MessageService {
     }
   }
 
+  Future<Message?> sendMessage(SendMessageRequest request) async {
+    try {
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.post(
+        EndPoint.sendMessage,
+        data: request.toJson(),
+        options: options,
+      );
+
+      if (response is Map<String, dynamic>) {
+        return Message.fromJson(response);
+      } else {
+        throw Exception('Invalid response format');
+      }
+    } catch (e) {
+      log('Error sending message via REST: $e');
+      return null;
+    }
+  }
+
+  Future<bool> markMessageAsRead(int messageId) async {
+    try {
+      final options = await _getAuthOptions();
+      await _dioConsumer.patch(
+        '${EndPoint.markMessageAsRead}/$messageId',
+        options: options,
+      );
+      return true;
+    } catch (e) {
+      log('Error marking message as read: $e');
+      return false;
+    }
+  }
+
   Future<bool> markAllMessagesAsRead(int withUserId) async {
     try {
       if (!await _isAuthenticated()) {
@@ -283,26 +163,37 @@ class MessageService {
     }
   }
 
-  Future<List<Message>> getMessageThread(int messageId) async {
+  Future<bool> deleteMessage(int messageId) async {
     try {
-      if (!await _isAuthenticated()) {
-        throw Exception('User not authenticated');
-      }
+      final options = await _getAuthOptions();
+      await _dioConsumer.delete(
+        '${EndPoint.deleteMessage}/$messageId',
+        options: options,
+      );
+      return true;
+    } catch (e) {
+      log('Error deleting message: $e');
+      return false;
+    }
+  }
 
+  /// Get specific message by ID
+  Future<Message?> getMessageById(int messageId) async {
+    try {
       final options = await _getAuthOptions();
       final response = await _dioConsumer.get(
-        '${EndPoint.getMessageThread}/$messageId',
+        '${EndPoint.getMessageById}/$messageId',
         options: options,
       );
 
-      if (response is List) {
-        return response.map((json) => Message.fromJson(json)).toList();
+      if (response is Map<String, dynamic>) {
+        return Message.fromJson(response);
       } else {
         throw Exception('Invalid response format');
       }
     } catch (e) {
-      log('Error getting message thread: $e');
-      throw Exception('Failed to load message thread: $e');
+      log('Error getting message by ID $messageId: $e');
+      return null;
     }
   }
 }
