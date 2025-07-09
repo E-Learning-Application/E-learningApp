@@ -59,7 +59,12 @@ class MatchingService {
       if (response != null) {
         if (response is Map<String, dynamic>) {
           log('Match found via REST API: ${response.toString()}');
-          return MatchResponse.fromJson(response);
+          return MatchResponse.fromJson(response, currentUser.userId);
+        } else if (response is List &&
+            response.isNotEmpty &&
+            response.first is Map<String, dynamic>) {
+          log('Match found via REST API (list): ${response.first.toString()}');
+          return MatchResponse.fromJson(response.first, currentUser.userId);
         } else {
           log('Unexpected response type: ${response.runtimeType}');
           return null;
@@ -109,8 +114,9 @@ class MatchingService {
       }
 
       final accessToken = await authService.getAccessToken();
-      if (accessToken == null) {
-        throw Exception('No valid access token found');
+      final currentUser = await authService.getCurrentUser();
+      if (currentUser == null) {
+        throw Exception('No valid authentication found');
       }
 
       final response = await dioConsumer.get(
@@ -124,13 +130,17 @@ class MatchingService {
 
       if (response != null && response is List) {
         log('Found ${response.length} matches');
-        return response.map((json) => MatchResponse.fromJson(json)).toList();
+        return response
+            .map((json) => MatchResponse.fromJson(json, currentUser.userId))
+            .toList();
       } else if (response != null &&
           response is Map &&
           response['data'] is List) {
         final List<dynamic> data = response['data'];
         log('Found ${data.length} matches in data field');
-        return data.map((json) => MatchResponse.fromJson(json)).toList();
+        return data
+            .map((json) => MatchResponse.fromJson(json, currentUser.userId))
+            .toList();
       }
 
       log('No matches found');
@@ -208,8 +218,9 @@ class MatchingService {
       }
 
       final accessToken = await authService.getAccessToken();
-      if (accessToken == null) {
-        throw Exception('No valid access token found');
+      final currentUser = await authService.getCurrentUser();
+      if (currentUser == null) {
+        throw Exception('No valid authentication found');
       }
 
       final response = await dioConsumer.put(

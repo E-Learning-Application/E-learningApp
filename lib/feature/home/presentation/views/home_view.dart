@@ -147,7 +147,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _handleMatchFound(Map<String, dynamic> matchData) {
     try {
       log('Match found data received: $matchData');
-      final match = MatchResponse.fromJson(matchData);
+      final currentUserId = _signalRService.currentUserId;
+      if (currentUserId == null) throw Exception('Current user ID is null');
+      final match = MatchResponse.fromJson(matchData, currentUserId);
       log('Parsed match: ${match.matchedUser.username} (${match.matchType})');
 
       setState(() {
@@ -306,8 +308,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 if (_isSearchingForMatch) _buildSearchingIndicator(),
                 const SizedBox(height: 20),
                 _buildFeatureOptions(),
-                const SizedBox(height: 30),
-                _buildActiveMatchesSection(),
                 const SizedBox(height: 30),
               ],
             ),
@@ -554,170 +554,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildActiveMatchesSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Active Matches',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        BlocBuilder<AuthCubit, AuthState>(
-          builder: (context, state) {
-            if (state is! AuthAuthenticated && state is! LoginSuccess) {
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Column(
-                  children: [
-                    Icon(
-                      Icons.login,
-                      size: 48,
-                      color: Colors.grey,
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Please login to view matches',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return FutureBuilder<List<MatchResponse>>(
-              future: _getActiveMatches(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.red[50],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: Colors.red[400],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Error loading matches',
-                          style: TextStyle(
-                            color: Colors.red[600],
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        TextButton(
-                          onPressed: () => setState(() {}),
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                final matches = snapshot.data ?? [];
-
-                if (matches.isEmpty) {
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Column(
-                      children: [
-                        Icon(
-                          Icons.people_outline,
-                          size: 48,
-                          color: Colors.grey,
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'No active matches',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: matches.length,
-                  itemBuilder: (context, index) {
-                    final match = matches[index];
-                    return _buildMatchCard(match);
-                  },
-                );
-              },
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMatchCard(MatchResponse match) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundImage: match.matchedUser.profilePicture != null
-              ? NetworkImage(match.matchedUser.profilePicture!)
-              : null,
-          child: match.matchedUser.profilePicture == null
-              ? Text(match.matchedUser.username[0].toUpperCase())
-              : null,
-        ),
-        title: Text(match.matchedUser.username),
-        subtitle: Text(
-          '${match.matchType.toUpperCase()} • ${_getTimeAgo(match.createdAt)}',
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.chat),
-              onPressed: () => _resumeMatch(match),
-            ),
-            IconButton(
-              icon: const Icon(Icons.call_end, color: Colors.red),
-              onPressed: () => _endMatch(match),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildCallOption({
     required String title,
     required String subtitle,
@@ -865,50 +701,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _handleMatchTimeout();
       });
 
-      log('Requesting match via REST API for type: $matchType');
+      log('Requesting match via SignalR for type: $matchType');
 
-      // Try REST API first, then SignalR as fallback
-      MatchResponse? match;
-      try {
-        match = await _matchingService.findMatch(matchType);
-        log('REST API call completed');
-      } catch (e) {
-        log('REST API call failed with exception: $e');
-        match = null;
-      }
-
-      if (match == null) {
-        log('No immediate match found via REST API - this is normal if no other users are available');
-      }
-
-      if (match != null) {
-        // Match found via REST API
-        log('Match found via REST API: ${match.matchedUser.username}');
-        _handleMatchFound(match.toJson());
-      } else {
-        // No match found via REST API, try SignalR
-        log('No match found via REST API, trying SignalR...');
-
-        if (_signalRConnectionState != ConnectionState.connected) {
-          // Initialize SignalR connection if not already connected
-          if (!_signalRService.isConnected) {
-            await _initializeSignalRConnection();
-          }
-
-          if (!_signalRService.isConnected) {
-            throw Exception('Unable to connect to matching service');
-          }
+      if (_signalRConnectionState != ConnectionState.connected) {
+        // Initialize SignalR connection if not already connected
+        if (!_signalRService.isConnected) {
+          await _initializeSignalRConnection();
         }
 
-        // Request match through SignalR
-        final success = await _signalRService.requestMatch(matchType);
-
-        if (!success) {
-          throw Exception('Failed to request match via SignalR');
+        if (!_signalRService.isConnected) {
+          throw Exception('Unable to connect to matching service');
         }
-
-        log('Match request sent via SignalR for type: $matchType');
       }
+
+      // Request match through SignalR only
+      final success = await _signalRService.requestMatch(matchType);
+
+      if (!success) {
+        throw Exception('Failed to request match via SignalR');
+      }
+
+      log('Match request sent via SignalR for type: $matchType');
     } catch (e) {
       if (!mounted) return;
 
@@ -921,7 +734,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to request match: ${e.toString()}'),
+          content: Text('Failed to request match: 24{e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );

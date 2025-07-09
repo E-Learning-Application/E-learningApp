@@ -15,10 +15,23 @@ class MatchResponse {
     required this.isActive,
   });
 
-  factory MatchResponse.fromJson(Map<String, dynamic> json) {
+  factory MatchResponse.fromJson(Map<String, dynamic> json, int currentUserId) {
+    final isCurrentUser1 = json['userId1'] == currentUserId;
     return MatchResponse(
       id: json['id'],
-      matchedUser: UserDto.fromJson(json['matchedUser']),
+      matchedUser: isCurrentUser1
+          ? UserDto(
+              id: json['userId2'],
+              username: json['userName2'],
+              profilePicture: json['imagePath2'],
+              languages: null,
+            )
+          : UserDto(
+              id: json['userId1'],
+              username: json['userName1'],
+              profilePicture: json['imagePath1'],
+              languages: null,
+            ),
       matchType: json['matchType'],
       createdAt: DateTime.parse(json['createdAt']),
       isActive: json['isActive'],
