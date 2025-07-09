@@ -74,6 +74,21 @@ class InterestManagementScreenSelfContained extends StatelessWidget {
 class InterestManagementView extends StatelessWidget {
   const InterestManagementView({super.key});
 
+  final Map<String, IconData> topicIcons = const {
+    'Programming': Icons.code,
+    'Fashion': Icons.checkroom,
+    'Art': Icons.palette,
+    'Gaming': Icons.sports_esports,
+    'Politics': Icons.how_to_vote,
+    'Photography': Icons.camera_alt,
+    'Tourism': Icons.travel_explore,
+    'Literature': Icons.menu_book,
+    'Music': Icons.music_note,
+    'Sports': Icons.sports_soccer,
+    'Business': Icons.business,
+    'Science': Icons.science,
+  };
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<InterestManagementCubit, InterestManagementState>(
@@ -144,7 +159,7 @@ class InterestManagementView extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: _buildInterestsList(context, state),
+                  child: _buildInterestsGrid(context, state),
                 ),
               ],
             );
@@ -154,7 +169,7 @@ class InterestManagementView extends StatelessWidget {
     );
   }
 
-  Widget _buildInterestsList(
+  Widget _buildInterestsGrid(
       BuildContext context, InterestManagementState state) {
     final cubit = context.read<InterestManagementCubit>();
     final interests = cubit.interests;
@@ -182,70 +197,60 @@ class InterestManagementView extends StatelessWidget {
       );
     }
 
-    return ListView.builder(
+    return GridView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 8.0,
+        mainAxisSpacing: 8.0,
+        childAspectRatio: 0.8,
+      ),
       itemCount: interests.length,
       itemBuilder: (context, index) {
         final interest = interests[index];
+        final iconData = topicIcons[interest.name] ?? Icons.interests;
 
         return Card(
-          margin: const EdgeInsets.only(bottom: 8.0),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.purple[100],
-              child: Icon(
-                Icons.interests,
-                color: Colors.purple[700],
-              ),
-            ),
-            title: Text(
-              interest.name,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-            subtitle: interest.description != null
-                ? Text(
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.purple[100],
+                  radius: 24,
+                  child: Icon(
+                    iconData,
+                    color: Colors.purple[700],
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  interest.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (interest.description != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
                     interest.description!,
                     style: TextStyle(
                       color: Colors.grey[600],
-                      fontSize: 14,
+                      fontSize: 10,
                     ),
+                    textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                  )
-                : null,
-            trailing: PopupMenuButton(
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'edit',
-                  child: const Row(
-                    children: [
-                      Icon(Icons.edit, color: Colors.blue),
-                      SizedBox(width: 8),
-                      Text('Edit'),
-                    ],
                   ),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: const Row(
-                    children: [
-                      Icon(Icons.delete, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Delete'),
-                    ],
-                  ),
-                ),
+                ],
               ],
-              onSelected: (value) {
-                if (value == 'edit') {
-                  _showEditInterestDialog(context, interest);
-                } else if (value == 'delete') {
-                  _showDeleteInterestDialog(context, interest);
-                }
-              },
             ),
           ),
         );
@@ -306,78 +311,6 @@ class InterestManagementView extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditInterestDialog(BuildContext context, Interest interest) {
-    final nameController = TextEditingController(text: interest.name);
-    final descriptionController =
-        TextEditingController(text: interest.description ?? '');
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit Interest'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Interest Name',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description (Optional)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteInterestDialog(BuildContext context, Interest interest) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Interest'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Are you sure you want to delete "${interest.name}"?'),
-            if (interest.description != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Description: ${interest.description}',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
           ),
         ],
       ),

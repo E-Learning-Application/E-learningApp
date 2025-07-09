@@ -214,8 +214,9 @@ class LanguageCubit extends Cubit<LanguageState> {
       );
 
       if (response.statusCode == 200) {
+        // Fix: Don't call toJson() on Map<String, dynamic>
         final interests = (response.data as List)
-            .map((e) => Interest.fromJson((e as dynamic).toJson()))
+            .map((e) => Interest.fromJson(e as Map<String, dynamic>))
             .toList();
         emit(InterestSuccess(interests: interests));
       } else {

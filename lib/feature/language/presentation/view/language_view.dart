@@ -13,7 +13,7 @@ class LanguageSelectionPage extends StatefulWidget {
 }
 
 class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
-  Language? selectedLanguage;
+  List<Language> selectedLanguages = [];
   List<Language> availableLanguages = [];
 
   @override
@@ -56,6 +56,22 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
     );
   }
 
+  void _toggleLanguageSelection(Language language) {
+    setState(() {
+      final index =
+          selectedLanguages.indexWhere((lang) => lang.id == language.id);
+      if (index != -1) {
+        selectedLanguages.removeAt(index);
+      } else {
+        selectedLanguages.add(language);
+      }
+    });
+  }
+
+  bool _isLanguageSelected(Language language) {
+    return selectedLanguages.any((lang) => lang.id == language.id);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -69,14 +85,95 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
               children: [
                 const SizedBox(height: 20),
                 const Text(
-                  'Choose the language you want to learn',
+                  'Choose languages you want to learn',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
                     height: 1.2,
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 8),
+                Text(
+                  'Select multiple languages to get started',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (selectedLanguages.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4A90E2).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF4A90E2).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.check_circle,
+                              color: const Color(0xFF4A90E2),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Selected Languages (${selectedLanguages.length})',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF4A90E2),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: selectedLanguages.map((language) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: const Color(0xFF4A90E2),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    language.flag ??
+                                        _getDefaultFlag(language.name),
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    language.name,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 24),
                 BlocConsumer<LanguageCubit, LanguageState>(
                   listener: (context, state) {
                     if (state is LanguageSuccess) {
@@ -100,6 +197,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                     }
                   },
                 ),
+                const SizedBox(height: 100), // Space for floating button
               ],
             ),
           ),
@@ -109,14 +207,13 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
         width: MediaQuery.of(context).size.width - 48,
         height: 56,
         child: ElevatedButton(
-          onPressed: selectedLanguage != null
+          onPressed: selectedLanguages.isNotEmpty
               ? () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => ProficiencyPage(
-                        language: selectedLanguage!.name,
-                        languageId: selectedLanguage!.id,
+                        selectedLanguages: selectedLanguages,
                       ),
                     ),
                   );
@@ -130,9 +227,11 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
             ),
             elevation: 0,
           ),
-          child: const Text(
-            'Next',
-            style: TextStyle(
+          child: Text(
+            selectedLanguages.isEmpty
+                ? 'Select at least one language'
+                : 'Next (${selectedLanguages.length} selected)',
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
               color: Colors.white,
@@ -173,14 +272,10 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   }
 
   Widget _buildLanguageCard(Language language) {
-    bool isSelected = selectedLanguage?.id == language.id;
+    bool isSelected = _isLanguageSelected(language);
 
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          selectedLanguage = language;
-        });
-      },
+      onTap: () => _toggleLanguageSelection(language),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
@@ -201,33 +296,55 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
             ),
           ],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                language.flag ?? _getDefaultFlag(language.name),
-                style: const TextStyle(
-                  fontSize: 28,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: Text(
-                  language.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    language.flag ?? _getDefaultFlag(language.name),
+                    style: const TextStyle(
+                      fontSize: 28,
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: Text(
+                      language.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF4A90E2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 16,
+                  ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

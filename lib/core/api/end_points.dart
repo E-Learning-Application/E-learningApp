@@ -15,7 +15,7 @@ class EndPoint {
   static const String removeLanguages = '/api/language/remove-languages';
 
   // Interest endpoints
-  static const String getAllInterests = '/api/interests';
+  static const String getAllInterests = '/api/interests/get-all-interests';
   static const String addInterest = '/api/interests';
   static const String addUserInterest = '/api/interests/user-interests';
   static const String getUserInterests = '/api/interests/user-interests';

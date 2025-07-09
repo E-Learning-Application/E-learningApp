@@ -27,7 +27,79 @@ class InterestService {
       );
 
       print('DEBUG: Get all interests response: $response');
-      return ApiResponse.fromJson(response, (data) => data);
+      print('DEBUG: Response type: ${response.runtimeType}');
+
+      // Handle the case where response is a List instead of Map
+      if (response is List) {
+        print('DEBUG: Response is a List, creating ApiResponse directly');
+
+        // Filter out invalid interests (empty names, null values, etc.)
+        final validInterests = response.where((item) {
+          if (item is Map<String, dynamic>) {
+            final name = item['name'];
+            final id = item['id'];
+
+            // Check if name is not null, not empty, and not just whitespace
+            bool isValid =
+                name != null && name.toString().trim().isNotEmpty && id != null;
+
+            print(
+                'DEBUG: Interest validation - ID: $id, Name: "$name", Valid: $isValid');
+            return isValid;
+          }
+          return false;
+        }).toList();
+
+        print(
+            'DEBUG: Filtered ${response.length} interests down to ${validInterests.length} valid ones');
+        print('DEBUG: Valid interests: $validInterests');
+
+        return ApiResponse(
+          statusCode: 200,
+          message: 'Success',
+          data: validInterests,
+        );
+      } else if (response is Map<String, dynamic>) {
+        print('DEBUG: Response is a Map, using fromJson');
+
+        // Check if the map has a data field that contains the interests
+        if (response.containsKey('data') && response['data'] is List) {
+          final List<dynamic> interestsList = response['data'];
+          final validInterests = interestsList.where((item) {
+            if (item is Map<String, dynamic>) {
+              final name = item['name'];
+              final id = item['id'];
+
+              bool isValid = name != null &&
+                  name.toString().trim().isNotEmpty &&
+                  id != null;
+
+              print(
+                  'DEBUG: Interest validation - ID: $id, Name: "$name", Valid: $isValid');
+              return isValid;
+            }
+            return false;
+          }).toList();
+
+          print(
+              'DEBUG: Filtered ${interestsList.length} interests down to ${validInterests.length} valid ones');
+
+          return ApiResponse(
+            statusCode: 200,
+            message: 'Success',
+            data: validInterests,
+          );
+        }
+
+        return ApiResponse.fromJson(response, (data) => data);
+      } else {
+        print('DEBUG: Unexpected response type: ${response.runtimeType}');
+        return ApiResponse(
+          statusCode: 200,
+          message: 'Success',
+          data: response,
+        );
+      }
     } on DioException catch (e) {
       print('DEBUG: DioException in getAllInterests: ${e.toString()}');
       print('DEBUG: Response data: ${e.response?.data}');
@@ -40,6 +112,7 @@ class InterestService {
       );
     } catch (e) {
       print('DEBUG: General exception in getAllInterests: ${e.toString()}');
+      print('DEBUG: Exception type: ${e.runtimeType}');
       return ApiResponse(
         statusCode: 500,
         message: 'An unexpected error occurred: ${e.toString()}',
@@ -151,7 +224,64 @@ class InterestService {
       );
 
       print('DEBUG: Get user interests response: $response');
-      return ApiResponse.fromJson(response, (data) => data);
+      print('DEBUG: Response type: ${response.runtimeType}');
+
+      // Handle the case where response might be a List instead of Map
+      if (response is List) {
+        print('DEBUG: User interests response is a List');
+
+        // Filter out invalid interests here too
+        final validInterests = response.where((item) {
+          if (item is Map<String, dynamic>) {
+            final name = item['name'];
+            final id = item['id'];
+
+            return name != null &&
+                name.toString().trim().isNotEmpty &&
+                id != null;
+          }
+          return false;
+        }).toList();
+
+        return ApiResponse(
+          statusCode: 200,
+          message: 'Success',
+          data: validInterests,
+        );
+      } else if (response is Map<String, dynamic>) {
+        print('DEBUG: User interests response is a Map');
+
+        // Check if the map has a data field that contains the interests
+        if (response.containsKey('data') && response['data'] is List) {
+          final List<dynamic> interestsList = response['data'];
+          final validInterests = interestsList.where((item) {
+            if (item is Map<String, dynamic>) {
+              final name = item['name'];
+              final id = item['id'];
+
+              return name != null &&
+                  name.toString().trim().isNotEmpty &&
+                  id != null;
+            }
+            return false;
+          }).toList();
+
+          return ApiResponse(
+            statusCode: 200,
+            message: 'Success',
+            data: validInterests,
+          );
+        }
+
+        return ApiResponse.fromJson(response, (data) => data);
+      } else {
+        print('DEBUG: Unexpected response type: ${response.runtimeType}');
+        return ApiResponse(
+          statusCode: 200,
+          message: 'Success',
+          data: response,
+        );
+      }
     } on DioException catch (e) {
       print('DEBUG: DioException in getUserInterests: ${e.toString()}');
       print('DEBUG: Response data: ${e.response?.data}');
