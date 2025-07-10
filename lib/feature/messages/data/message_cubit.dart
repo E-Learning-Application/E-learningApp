@@ -64,6 +64,130 @@ class MessageCubit extends Cubit<MessageState> {
     }
   }
 
+  Future<void> loadAllMessages() async {
+    try {
+      emit(MessageLoading());
+
+      final messages = await _messageService.getAllMessages();
+
+      final messagesWithStatus = messages
+          .map((msg) => MessageWithStatus(
+                message: msg,
+                status: MessageStatus.sent,
+                isDelivered: true,
+                isRead: msg.isRead,
+              ))
+          .toList();
+
+      if (messages.isEmpty) {
+        emit(MessageError(message: 'No messages found'));
+      } else {
+        emit(AllMessagesLoaded(messages: messagesWithStatus));
+      }
+    } catch (e) {
+      log('Error loading all messages: $e');
+      emit(MessageError(message: 'Failed to load all messages: $e'));
+    }
+  }
+
+  Future<void> loadUnreadCount() async {
+    try {
+      final count = await _messageService.getUnreadCount();
+      emit(UnreadCountUpdated(count: count));
+    } catch (e) {
+      log('Error loading unread count: $e');
+      emit(MessageError(message: 'Failed to load unread count: $e'));
+    }
+  }
+
+  Future<void> loadLastMessageWith(int userId) async {
+    try {
+      final message = await _messageService.getLastMessageWith(userId);
+
+      if (message != null) {
+        emit(LastMessageLoaded(
+          message: MessageWithStatus(
+            message: message,
+            status: MessageStatus.sent,
+            isDelivered: true,
+            isRead: message.isRead,
+          ),
+          withUserId: userId,
+        ));
+      } else {
+        emit(MessageError(message: 'No messages found with user $userId'));
+      }
+    } catch (e) {
+      log('Error loading last message with user $userId: $e');
+      emit(MessageError(message: 'Failed to load last message: $e'));
+    }
+  }
+
+  Future<void> loadPaginatedMessages({
+    required int page,
+    required int pageSize,
+  }) async {
+    try {
+      emit(MessageLoading());
+
+      final messages = await _messageService.getMessagesWithPagination(
+        page: page,
+        pageSize: pageSize,
+      );
+
+      final messagesWithStatus = messages
+          .map((msg) => MessageWithStatus(
+                message: msg,
+                status: MessageStatus.sent,
+                isDelivered: true,
+                isRead: msg.isRead,
+              ))
+          .toList();
+
+      if (messages.isEmpty) {
+        emit(MessageError(message: 'No messages found for page $page'));
+      } else {
+        emit(PaginatedMessagesLoaded(
+          messages: messagesWithStatus,
+          page: page,
+          pageSize: pageSize,
+        ));
+      }
+    } catch (e) {
+      log('Error loading paginated messages: $e');
+      emit(MessageError(message: 'Failed to load paginated messages: $e'));
+    }
+  }
+
+  Future<void> loadMessageThread(int messageId) async {
+    try {
+      emit(MessageLoading());
+
+      final messages = await _messageService.getMessageThread(messageId);
+
+      final messagesWithStatus = messages
+          .map((msg) => MessageWithStatus(
+                message: msg,
+                status: MessageStatus.sent,
+                isDelivered: true,
+                isRead: msg.isRead,
+              ))
+          .toList();
+
+      if (messages.isEmpty) {
+        emit(MessageError(message: 'No thread found for message $messageId'));
+      } else {
+        emit(MessageThreadLoaded(
+          messages: messagesWithStatus,
+          rootMessageId: messageId,
+        ));
+      }
+    } catch (e) {
+      log('Error loading message thread: $e');
+      emit(MessageError(message: 'Failed to load message thread: $e'));
+    }
+  }
+
   Future<void> loadChatHistory({
     required int withUserId,
     int page = 1,
@@ -337,17 +461,19 @@ class MessageCubit extends Cubit<MessageState> {
     }
   }
 
-  Future<void> markAllMessagesAsRead(int withUserId) async {
+  Future<void> markAllMessagesAsRead(int userId) async {
     try {
-      final success = await _messageService.markAllMessagesAsRead(withUserId);
+      final success = await _messageService.markAllMessagesAsRead(userId);
       if (success) {
         emit(MessageOperationSuccess(
           message: 'All messages marked as read',
           actionType: 'mark_all_read',
         ));
+      } else {
+        log('Failed to mark messages as read for user $userId');
       }
     } catch (e) {
-      log('Error marking all messages as read: $e');
+      log('Error marking messages as read: $e');
     }
   }
 

@@ -109,6 +109,158 @@ class MessageService {
     }
   }
 
+  Future<List<Message>> getAllMessages() async {
+    try {
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getAllMessages,
+        options: options,
+      );
+
+      log('getAllMessages response: $response');
+
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
+      } else if (response is Map<String, dynamic>) {
+        if (response.containsKey('data') && response['data'] is List) {
+          final List<dynamic> data = response['data'];
+          return data.map((json) => Message.fromJson(json)).toList();
+        }
+      }
+
+      throw Exception(
+          'Invalid response format: Expected List or Map with data key');
+    } catch (e) {
+      log('Error getting all messages: $e');
+      throw Exception('Failed to load all messages: $e');
+    }
+  }
+
+  Future<int> getUnreadCount() async {
+    try {
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getUnreadCount,
+        options: options,
+      );
+
+      log('getUnreadCount response: $response');
+
+      if (response is int) {
+        return response;
+      } else if (response is Map<String, dynamic>) {
+        if (response.containsKey('count')) {
+          return response['count'] as int;
+        } else if (response.containsKey('data')) {
+          return response['data'] as int;
+        }
+      }
+
+      throw Exception(
+          'Invalid response format: Expected int or Map with count key');
+    } catch (e) {
+      log('Error getting unread count: $e');
+      throw Exception('Failed to load unread count: $e');
+    }
+  }
+
+  Future<Message?> getLastMessageWith(int userId) async {
+    try {
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getLastMessage,
+        queryParameters: {'withUser': userId},
+        options: options,
+      );
+
+      log('getLastMessageWith response: $response');
+
+      if (response is Map<String, dynamic>) {
+        if (response.containsKey('message')) {
+          return Message.fromJson(response['message']);
+        } else if (response.containsKey('data')) {
+          return Message.fromJson(response['data']);
+        } else {
+          return Message.fromJson(response);
+        }
+      }
+
+      return null;
+    } catch (e) {
+      log('Error getting last message with user $userId: $e');
+      return null;
+    }
+  }
+
+  Future<List<Message>> getMessagesWithPagination({
+    required int page,
+    required int pageSize,
+  }) async {
+    try {
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getMessagesWithPagination,
+        queryParameters: {
+          'page': page,
+          'pageSize': pageSize,
+        },
+        options: options,
+      );
+
+      log('getMessagesWithPagination response: $response');
+
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
+      } else if (response is Map<String, dynamic>) {
+        if (response.containsKey('data') && response['data'] is List) {
+          final List<dynamic> data = response['data'];
+          return data.map((json) => Message.fromJson(json)).toList();
+        } else if (response.containsKey('messages') &&
+            response['messages'] is List) {
+          final List<dynamic> messages = response['messages'];
+          return messages.map((json) => Message.fromJson(json)).toList();
+        }
+      }
+
+      throw Exception(
+          'Invalid response format: Expected List or Map with data/messages key');
+    } catch (e) {
+      log('Error getting paginated messages: $e');
+      throw Exception('Failed to load paginated messages: $e');
+    }
+  }
+
+  Future<List<Message>> getMessageThread(int messageId) async {
+    try {
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        '${EndPoint.getMessageThread}/$messageId',
+        options: options,
+      );
+
+      log('getMessageThread response: $response');
+
+      if (response is List) {
+        return response.map((json) => Message.fromJson(json)).toList();
+      } else if (response is Map<String, dynamic>) {
+        if (response.containsKey('thread') && response['thread'] is List) {
+          final List<dynamic> thread = response['thread'];
+          return thread.map((json) => Message.fromJson(json)).toList();
+        } else if (response.containsKey('messages') &&
+            response['messages'] is List) {
+          final List<dynamic> messages = response['messages'];
+          return messages.map((json) => Message.fromJson(json)).toList();
+        }
+      }
+
+      throw Exception(
+          'Invalid response format: Expected List or Map with thread/messages key');
+    } catch (e) {
+      log('Error getting message thread: $e');
+      throw Exception('Failed to load message thread: $e');
+    }
+  }
+
   Future<List<Message>> searchMessages(String query) async {
     try {
       if (!await _isAuthenticated()) {

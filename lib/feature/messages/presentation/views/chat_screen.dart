@@ -7,9 +7,9 @@ import 'dart:io';
 import '../../../../core/model/match_response.dart';
 import '../../../../core/service/matching_service.dart';
 import '../../../../core/service/signalr_service.dart' as signalr;
-import '../../../../core/model/message_model.dart';
-import '../../../../feature/messages/data/message_state.dart'
-    hide MessageStatus, MessageWithStatus;
+import '../../../../core/model/message_model.dart' hide MessageStatus;
+import '../../../../feature/messages/data/message_state.dart' as msg_state;
+import '../../../../core/service/auth_service.dart';
 
 class ChatMessage {
   final String id;
@@ -17,7 +17,7 @@ class ChatMessage {
   final bool isCurrentUser;
   final DateTime timestamp;
   final MessageType type;
-  final MessageStatus status;
+  final msg_state.MessageStatus status;
   final String? imageUrl;
   final File? localImageFile;
 
@@ -27,13 +27,13 @@ class ChatMessage {
     required this.isCurrentUser,
     required this.timestamp,
     this.type = MessageType.text,
-    this.status = MessageStatus.sent,
+    this.status = msg_state.MessageStatus.sent,
     this.imageUrl,
     this.localImageFile,
   });
 
   factory ChatMessage.fromMessageWithStatus(
-      MessageWithStatus messageWithStatus, int currentUserId) {
+      msg_state.MessageWithStatus messageWithStatus, int currentUserId) {
     return ChatMessage(
       id: messageWithStatus.message.id.toString(),
       content: messageWithStatus.message.content,
@@ -96,23 +96,64 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSendingMessage = false;
   bool _isUploadingImage = false;
   final List<ChatMessage> _messages = [];
+  Timer? _typingTimer;
+  bool _isTyping = false;
 
   @override
   void initState() {
     super.initState();
     _loadChatHistory();
+    _setupTypingListener();
+    _markMessagesAsRead();
+  }
+
+  void _setupTypingListener() {
+    _messageController.addListener(() {
+      if (_messageController.text.isNotEmpty && !_isTyping) {
+        _startTyping();
+      } else if (_messageController.text.isEmpty && _isTyping) {
+        _stopTyping();
+      }
+    });
+  }
+
+  void _startTyping() {
+    if (!_isTyping) {
+      setState(() {
+        _isTyping = true;
+      });
+      final messageCubit = context.read<MessageCubit>();
+      messageCubit.startTyping(widget.match.matchedUser.id);
+    }
+  }
+
+  void _stopTyping() {
+    if (_isTyping) {
+      setState(() {
+        _isTyping = false;
+      });
+      final messageCubit = context.read<MessageCubit>();
+      messageCubit.stopTyping(widget.match.matchedUser.id);
+    }
   }
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _typingTimer?.cancel();
+    _stopTyping();
     super.dispose();
   }
 
   void _loadChatHistory() {
     final messageCubit = context.read<MessageCubit>();
     messageCubit.loadChatHistory(withUserId: widget.match.matchedUser.id);
+  }
+
+  void _markMessagesAsRead() {
+    final messageCubit = context.read<MessageCubit>();
+    messageCubit.markAllMessagesAsRead(widget.match.matchedUser.id);
   }
 
   void _sendMessage() async {
@@ -133,6 +174,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
 
     _messageController.clear();
+    _stopTyping();
 
     setState(() {
       _isSendingMessage = false;
@@ -156,7 +198,7 @@ class _ChatScreenState extends State<ChatScreen> {
         isCurrentUser: true,
         timestamp: DateTime.now(),
         type: MessageType.image,
-        status: MessageStatus.sending,
+        status: msg_state.MessageStatus.sending,
         localImageFile: imageFile,
       );
 
@@ -405,124 +447,129 @@ class _ChatScreenState extends State<ChatScreen> {
             bottomLeft: Radius.circular(4),
           );
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: Row(
-        mainAxisAlignment:
-            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isCurrentUser) ...[
-            CircleAvatar(
-              radius: 18,
-              backgroundImage: message.isCurrentUser
-                  ? null
-                  : (widget.match.matchedUser.profilePicture != null &&
-                          widget.match.matchedUser.profilePicture!.isNotEmpty
-                      ? NetworkImage(getFullImageUrl(
-                          widget.match.matchedUser.profilePicture))
-                      : null),
-              child: widget.match.matchedUser.profilePicture == null ||
-                      widget.match.matchedUser.profilePicture!.isEmpty
-                  ? Text(
-                      widget.match.matchedUser.username[0].toUpperCase(),
-                      style: const TextStyle(fontSize: 14),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Column(
-              crossAxisAlignment: align,
-              children: [
-                Container(
-                  padding: message.type == MessageType.image
-                      ? const EdgeInsets.all(4)
-                      : const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: message.type == MessageType.image
-                        ? Colors.transparent
-                        : bubbleColor,
-                    borderRadius: radius,
-                    boxShadow: message.type == MessageType.image
-                        ? null
-                        : [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (message.type == MessageType.image)
-                        _buildImageMessage(message)
-                      else
-                        Text(
-                          message.content,
-                          style: TextStyle(
-                            color: textColor,
-                            fontSize: 16,
-                          ),
-                        ),
-                      if (isCurrentUser) ...[
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _formatMessageTime(message.timestamp),
-                              style: TextStyle(
-                                color: message.type == MessageType.image
-                                    ? Colors.grey[600]
-                                    : textColor.withOpacity(0.7),
-                                fontSize: 10,
+    return GestureDetector(
+      onLongPress: () {
+        _showMessageOptions(message);
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Row(
+          mainAxisAlignment:
+              isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!isCurrentUser) ...[
+              CircleAvatar(
+                radius: 18,
+                backgroundImage: message.isCurrentUser
+                    ? null
+                    : (widget.match.matchedUser.profilePicture != null &&
+                            widget.match.matchedUser.profilePicture!.isNotEmpty
+                        ? NetworkImage(getFullImageUrl(
+                            widget.match.matchedUser.profilePicture))
+                        : null),
+                child: widget.match.matchedUser.profilePicture == null ||
+                        widget.match.matchedUser.profilePicture!.isEmpty
+                    ? Text(
+                        widget.match.matchedUser.username[0].toUpperCase(),
+                        style: const TextStyle(fontSize: 14),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: Column(
+                crossAxisAlignment: align,
+                children: [
+                  Container(
+                    padding: message.type == MessageType.image
+                        ? const EdgeInsets.all(4)
+                        : const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: message.type == MessageType.image
+                          ? Colors.transparent
+                          : bubbleColor,
+                      borderRadius: radius,
+                      boxShadow: message.type == MessageType.image
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.04),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
                               ),
+                            ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (message.type == MessageType.image)
+                          _buildImageMessage(message)
+                        else
+                          Text(
+                            message.content,
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 16,
                             ),
-                            const SizedBox(width: 4),
-                            _buildMessageStatusIcon(message.status),
-                          ],
-                        ),
+                          ),
+                        if (isCurrentUser) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _formatMessageTime(message.timestamp),
+                                style: TextStyle(
+                                  color: message.type == MessageType.image
+                                      ? Colors.grey[600]
+                                      : textColor.withOpacity(0.7),
+                                  fontSize: 10,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              _buildMessageStatusIcon(message.status),
+                            ],
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                ),
-                if (!isCurrentUser) ...[
-                  const SizedBox(height: 2),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Text(
-                      _formatMessageTime(message.timestamp),
-                      style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 12,
-                      ),
                     ),
                   ),
+                  if (!isCurrentUser) ...[
+                    const SizedBox(height: 2),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(
+                        _formatMessageTime(message.timestamp),
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          if (isCurrentUser) ...[
-            const SizedBox(width: 8),
-            const CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.blueAccent,
-              child: Icon(Icons.person, color: Colors.white, size: 18),
-            ),
+            if (isCurrentUser) ...[
+              const SizedBox(width: 8),
+              const CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.blueAccent,
+                child: Icon(Icons.person, color: Colors.white, size: 18),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildMessageStatusIcon(MessageStatus status) {
+  Widget _buildMessageStatusIcon(msg_state.MessageStatus status) {
     switch (status) {
-      case MessageStatus.sending:
+      case msg_state.MessageStatus.sending:
         return const SizedBox(
           width: 12,
           height: 12,
@@ -531,13 +578,13 @@ class _ChatScreenState extends State<ChatScreen> {
             valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
           ),
         );
-      case MessageStatus.sent:
+      case msg_state.MessageStatus.sent:
         return const Icon(Icons.check, size: 12, color: Colors.white70);
-      case MessageStatus.delivered:
+      case msg_state.MessageStatus.delivered:
         return const Icon(Icons.done_all, size: 12, color: Colors.white70);
-      case MessageStatus.read:
+      case msg_state.MessageStatus.read:
         return const Icon(Icons.done_all, size: 12, color: Colors.blue);
-      case MessageStatus.failed:
+      case msg_state.MessageStatus.failed:
         return const Icon(Icons.error, size: 12, color: Colors.red);
       default:
         return const SizedBox();
@@ -628,36 +675,253 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _updateMessagesFromState(MessageState state) {
-    final currentUserId = widget.signalRService.currentUserId ?? 0;
+  void _updateMessagesFromState(msg_state.MessageState state) {
+    final authService = AuthService(dioConsumer: context.read());
+    authService.getCurrentUser().then((currentUser) {
+      final currentUserId =
+          currentUser?.userId ?? widget.signalRService.currentUserId ?? 0;
 
-    if (state is ChatLoaded &&
-        state.otherUserId == widget.match.matchedUser.id) {
-      print('ChatScreen: Updating messages from ChatLoaded state');
-      setState(() {
-        _messages.clear();
-        _messages.addAll(
-          state.messages.map((msg) => ChatMessage.fromMessageWithStatus(
-                msg as dynamic,
-                currentUserId,
-              )),
-        );
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-    } else if (state is NewMessageReceived) {
-      final message = state.message;
-      print('ChatScreen: Received new message from user ${message.senderId}');
-      print('ChatScreen: Message content: "${message.content}"');
+      print('ChatScreen: Current user ID: $currentUserId');
+      print('ChatScreen: Matched user ID: ${widget.match.matchedUser.id}');
 
-      if (message.senderId == widget.match.matchedUser.id ||
-          message.receiverId == widget.match.matchedUser.id) {
+      if (state is msg_state.ChatLoaded &&
+          state.otherUserId == widget.match.matchedUser.id) {
+        print('ChatScreen: Updating messages from ChatLoaded state');
+        print('ChatScreen: Number of messages: ${state.messages.length}');
+
         setState(() {
-          _messages.add(ChatMessage.fromMessage(message, currentUserId));
-          _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          _messages.clear();
+          _messages.addAll(
+            state.messages.map((msg) {
+              final chatMessage = ChatMessage.fromMessageWithStatus(
+                msg,
+                currentUserId,
+              );
+              print(
+                  'ChatScreen: Message ${chatMessage.id} - isCurrentUser: ${chatMessage.isCurrentUser}, content: "${chatMessage.content}"');
+              return chatMessage;
+            }),
+          );
         });
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      } else if (state is msg_state.NewMessageReceived) {
+        final message = state.message;
+        print('ChatScreen: Received new message from user ${message.senderId}');
+        print('ChatScreen: Message content: "${message.content}"');
+
+        if (message.senderId == widget.match.matchedUser.id ||
+            message.receiverId == widget.match.matchedUser.id) {
+          setState(() {
+            _messages.add(ChatMessage.fromMessage(message, currentUserId));
+            _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          });
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => _scrollToBottom());
+        }
+      } else if (state is msg_state.MessageSent) {
+        print('ChatScreen: Message sent successfully');
+      } else if (state is msg_state.MessageSendFailed) {
+        print('ChatScreen: Message send failed: ${state.errorMessage}');
+      }
+    });
+  }
+
+  Widget _buildTypingIndicator() {
+    return BlocBuilder<MessageCubit, msg_state.MessageState>(
+      buildWhen: (previous, current) =>
+          current is msg_state.UserTypingStatusChanged &&
+          current.userId == widget.match.matchedUser.id,
+      builder: (context, state) {
+        bool isOtherUserTyping = false;
+        if (state is msg_state.UserTypingStatusChanged) {
+          final messageCubit = context.read<MessageCubit>();
+          isOtherUserTyping =
+              messageCubit.isUserTyping(widget.match.matchedUser.id);
+        }
+
+        if (isOtherUserTyping) {
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundImage: widget.match.matchedUser.profilePicture !=
+                              null &&
+                          widget.match.matchedUser.profilePicture!.isNotEmpty
+                      ? NetworkImage(getFullImageUrl(
+                          widget.match.matchedUser.profilePicture))
+                      : null,
+                  child: widget.match.matchedUser.profilePicture == null ||
+                          widget.match.matchedUser.profilePicture!.isEmpty
+                      ? Text(
+                          widget.match.matchedUser.username[0].toUpperCase(),
+                          style: const TextStyle(fontSize: 14),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'typing',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.grey[600]!),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  void _showMessageOptions(ChatMessage message) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('Copy Message'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _copyMessage(message.content);
+                },
+              ),
+              if (message.isCurrentUser)
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Delete Message',
+                      style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _deleteMessage(message);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.cancel),
+                title: const Text('Cancel'),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _copyMessage(String content) {
+    // TODO: Implement clipboard functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Message copied to clipboard'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _deleteMessage(ChatMessage message) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Message'),
+        content: const Text('Are you sure you want to delete this message?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final messageCubit = context.read<MessageCubit>();
+        await messageCubit.deleteMessage(int.parse(message.id));
+
+        setState(() {
+          _messages.removeWhere((msg) => msg.id == message.id);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Message deleted'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete message: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
+  }
+
+  void _showSearchDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Search Messages'),
+          content: TextField(
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Search messages...',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (query) {
+              if (query.isNotEmpty) {
+                final messageCubit = context.read<MessageCubit>();
+                messageCubit.searchMessages(query);
+              }
+              Navigator.pop(context);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -675,6 +939,12 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              _showSearchDialog();
+            },
+          ),
           if (widget.match.matchType == 'video')
             IconButton(
               icon: const Icon(Icons.videocam),
@@ -771,18 +1041,18 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
-      body: BlocListener<MessageCubit, MessageState>(
+      body: BlocListener<MessageCubit, msg_state.MessageState>(
         listener: (context, state) {
           _updateMessagesFromState(state);
 
-          if (state is MessageError) {
+          if (state is msg_state.MessageError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.message),
                 backgroundColor: Colors.red,
               ),
             );
-          } else if (state is MessageSendFailed) {
+          } else if (state is msg_state.MessageSendFailed) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Failed to send: ${state.errorMessage}'),
@@ -794,9 +1064,9 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           children: [
             Expanded(
-              child: BlocBuilder<MessageCubit, MessageState>(
+              child: BlocBuilder<MessageCubit, msg_state.MessageState>(
                 builder: (context, state) {
-                  if (state is MessageLoading) {
+                  if (state is msg_state.MessageLoading) {
                     return _buildLoadingIndicator();
                   }
 
@@ -814,8 +1084,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
                   return ListView.builder(
                     controller: _scrollController,
-                    itemCount: _messages.length,
+                    itemCount: _messages.length + 1,
                     itemBuilder: (context, index) {
+                      if (index == _messages.length) {
+                        return _buildTypingIndicator();
+                      }
                       final message = _messages[index];
                       return _buildMessageBubble(message);
                     },

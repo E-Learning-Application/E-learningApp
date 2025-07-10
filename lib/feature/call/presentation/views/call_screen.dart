@@ -24,6 +24,13 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   bool _callActive = true;
 
+  String getFullImageUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    if (path.startsWith('http')) return path;
+    const baseUrl = 'https://elearningproject.runasp.net';
+    return '$baseUrl$path';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -62,10 +69,11 @@ class _CallScreenState extends State<CallScreen> {
                 children: [
                   CircleAvatar(
                     radius: 48,
-                    backgroundImage: widget.match.matchedUser.profilePicture !=
-                            null
-                        ? NetworkImage(widget.match.matchedUser.profilePicture!)
-                        : null,
+                    backgroundImage:
+                        widget.match.matchedUser.profilePicture != null
+                            ? NetworkImage(getFullImageUrl(
+                                widget.match.matchedUser.profilePicture!))
+                            : null,
                     child: widget.match.matchedUser.profilePicture == null
                         ? Text(
                             widget.match.matchedUser.username[0].toUpperCase(),

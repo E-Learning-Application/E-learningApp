@@ -39,6 +39,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   static const Duration _matchTimeout = Duration(seconds: 30);
 
+  String getFullImageUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    if (path.startsWith('http')) return path;
+    const baseUrl = 'https://elearningproject.runasp.net';
+    return '$baseUrl$path';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -202,7 +209,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             CircleAvatar(
               radius: 40,
               backgroundImage: match.matchedUser.profilePicture != null
-                  ? NetworkImage(match.matchedUser.profilePicture!)
+                  ? NetworkImage(
+                      getFullImageUrl(match.matchedUser.profilePicture!))
                   : null,
               child: match.matchedUser.profilePicture == null
                   ? Text(

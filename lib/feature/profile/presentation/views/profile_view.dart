@@ -309,7 +309,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 user = state.data as User;
                 _currentUser = user;
 
-                // Update controllers when user data is loaded (only if not editing)
                 if (!_isEditing) {
                   _usernameController.text = user.username;
                   _bioController.text = user.bio ?? '';

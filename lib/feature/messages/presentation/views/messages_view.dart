@@ -3,6 +3,13 @@ import 'package:e_learning_app/feature/messages/data/message_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:e_learning_app/core/model/message_model.dart';
+import 'package:e_learning_app/core/model/match_response.dart';
+import 'package:e_learning_app/core/service/matching_service.dart';
+import 'package:e_learning_app/core/service/signalr_service.dart' as signalr;
+import 'package:e_learning_app/feature/messages/presentation/views/chat_screen.dart';
+import 'dart:async';
+import 'package:e_learning_app/core/model/user_dto.dart';
+import 'package:e_learning_app/feature/user_selection/presentation/user_selection_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -13,6 +20,8 @@ class MessagesScreen extends StatefulWidget {
 
 class _MessagesScreenState extends State<MessagesScreen> {
   late MessageCubit _messageCubit;
+  final List<ChatSummary> _deletedChats = [];
+  final Map<int, Timer> _typingTimers = {};
 
   @override
   void initState() {
@@ -52,6 +61,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
+                  } else if (state is NewMessageReceived) {
+                    _messageCubit.loadChatList();
+                  } else if (state is UnreadCountUpdated) {
+                    setState(() {});
                   }
                 },
                 builder: (context, state) {
@@ -72,15 +85,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
             ),
           ],
         ),
-      ),
-      // Floating Action Button to start new chat
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Navigate to user selection or new chat screen
-          _showNewChatDialog();
-        },
-        backgroundColor: Colors.blue,
-        child: const Icon(Icons.add),
       ),
     );
   }
@@ -253,6 +257,13 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 
+  String getFullImageUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    if (path.startsWith('http')) return path;
+    const baseUrl = 'https://elearningproject.runasp.net';
+    return '$baseUrl$path';
+  }
+
   Widget _buildChatItem(ChatSummary chat) {
     return Dismissible(
       key: Key('chat_${chat.userId}'),
@@ -288,18 +299,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         );
       },
       onDismissed: (direction) {
-        // Handle chat deletion
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Chat with ${chat.userName} deleted'),
-            action: SnackBarAction(
-              label: 'Undo',
-              onPressed: () {
-                // Implement undo functionality
-              },
-            ),
-          ),
-        );
+        _deleteChat(chat);
       },
       child: InkWell(
         onTap: () {
@@ -322,7 +322,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     radius: 20,
                     backgroundColor: Colors.grey[300],
                     backgroundImage: chat.profileImage != null
-                        ? NetworkImage(chat.profileImage!)
+                        ? NetworkImage(getFullImageUrl(chat.profileImage!))
                         : null,
                     child: chat.profileImage == null
                         ? Text(
@@ -389,17 +389,30 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         Expanded(
                           child: BlocBuilder<MessageCubit, MessageState>(
                             buildWhen: (previous, current) =>
-                                current is UserOnlineStatusChanged &&
+                                current is UserTypingStatusChanged &&
                                 current.userId == chat.userId,
                             builder: (context, state) {
                               bool isTyping = false;
-                              if (state is UserOnlineStatusChanged) {
+                              if (state is UserTypingStatusChanged) {
                                 isTyping =
                                     _messageCubit.isUserTyping(chat.userId);
                               }
 
+                              bool isImageMessage =
+                                  chat.lastMessage.startsWith('http') &&
+                                      (chat.lastMessage.contains('.jpg') ||
+                                          chat.lastMessage.contains('.jpeg') ||
+                                          chat.lastMessage.contains('.png') ||
+                                          chat.lastMessage.contains('.gif'));
+
+                              String displayMessage = isTyping
+                                  ? 'typing...'
+                                  : isImageMessage
+                                      ? '📷 Image'
+                                      : chat.lastMessage;
+
                               return Text(
-                                isTyping ? 'typing...' : chat.lastMessage,
+                                displayMessage,
                                 style: TextStyle(
                                   color:
                                       isTyping ? Colors.blue : Colors.grey[600],
@@ -462,17 +475,88 @@ class _MessagesScreenState extends State<MessagesScreen> {
     }
   }
 
-  void _navigateToChat(ChatSummary chat) {
-    // Navigate to individual chat screen
-    // You'll need to implement this navigation based on your routing setup
-    Navigator.of(context).pushNamed(
-      '/chat',
-      arguments: {
-        'userId': chat.userId,
-        'userName': chat.userName,
-        'profileImage': chat.profileImage,
-      },
+  void _navigateToChat(ChatSummary chat) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
     );
+
+    try {
+      await _messageCubit.loadChatHistory(withUserId: chat.userId);
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      final match = MatchResponse(
+        id: chat.userId,
+        matchedUser: UserDto(
+          id: chat.userId,
+          username: chat.userName,
+          profilePicture: chat.profileImage,
+          languages: [],
+        ),
+        matchType: 'text', // Default to text chat
+        createdAt: chat.lastMessageTime,
+        isActive: true,
+      );
+
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              match: match,
+              matchingService: MatchingService(
+                dioConsumer: context.read(),
+                authService: context.read(),
+              ),
+              signalRService: signalr.SignalRService(),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load chat: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _deleteChat(ChatSummary chat) {
+    _deletedChats.add(chat);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Chat with ${chat.userName} deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            _undoDeleteChat(chat);
+          },
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    // TODO: Implement actual chat deletion in your backend
+  }
+
+  void _undoDeleteChat(ChatSummary chat) {
+    _deletedChats.remove(chat);
+    _messageCubit.loadChatList();
   }
 
   void _showNewChatDialog() {
@@ -489,7 +573,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              // Navigate to user selection screen
+              _showUserSelectionScreen();
             },
             child: const Text('Select User'),
           ),
@@ -498,8 +582,48 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 
+  void _showUserSelectionScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => UserSelectionScreen(
+          onUserSelected: (selectedUser) {
+            _createNewChat(selectedUser);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _createNewChat(UserDto selectedUser) {
+    final match = MatchResponse(
+      id: selectedUser.id,
+      matchedUser: selectedUser,
+      matchType: 'text',
+      createdAt: DateTime.now(),
+      isActive: true,
+    );
+
+    // Navigate to chat screen
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ChatScreen(
+          match: match,
+          matchingService: MatchingService(
+            dioConsumer: context.read(),
+            authService: context.read(),
+          ),
+          signalRService: signalr.SignalRService(),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    for (final timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
     super.dispose();
   }
 }

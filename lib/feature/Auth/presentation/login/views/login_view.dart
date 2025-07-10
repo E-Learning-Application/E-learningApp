@@ -41,11 +41,9 @@ class _LoginViewState extends State<LoginView> {
       body: BlocConsumer<AuthCubit, AuthState>(
         listener: (context, state) {
           if (state is LoginSuccess || state is AuthAuthenticated) {
-            // Clear form
             _emailController.clear();
             _passwordController.clear();
 
-            // Show success message
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Login successful!'),
@@ -54,13 +52,11 @@ class _LoginViewState extends State<LoginView> {
               ),
             );
 
-            // Navigate to home - use pushAndRemoveUntil to clear auth stack
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(builder: (context) => const AppContainer()),
               (route) => false,
             );
           } else if (state is LoginFailure) {
-            // Show error message
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.message),

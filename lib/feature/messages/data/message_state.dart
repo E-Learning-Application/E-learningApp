@@ -156,6 +156,56 @@ class UserTypingStatusChanged extends MessageState {
   List<Object?> get props => [userId, isTyping, targetUserId];
 }
 
+class AllMessagesLoaded extends MessageState {
+  final List<MessageWithStatus> messages;
+
+  const AllMessagesLoaded({required this.messages});
+
+  @override
+  List<Object?> get props => [messages];
+}
+
+class LastMessageLoaded extends MessageState {
+  final MessageWithStatus message;
+  final int withUserId;
+
+  const LastMessageLoaded({
+    required this.message,
+    required this.withUserId,
+  });
+
+  @override
+  List<Object?> get props => [message, withUserId];
+}
+
+class PaginatedMessagesLoaded extends MessageState {
+  final List<MessageWithStatus> messages;
+  final int page;
+  final int pageSize;
+
+  const PaginatedMessagesLoaded({
+    required this.messages,
+    required this.page,
+    required this.pageSize,
+  });
+
+  @override
+  List<Object?> get props => [messages, page, pageSize];
+}
+
+class MessageThreadLoaded extends MessageState {
+  final List<MessageWithStatus> messages;
+  final int rootMessageId;
+
+  const MessageThreadLoaded({
+    required this.messages,
+    required this.rootMessageId,
+  });
+
+  @override
+  List<Object?> get props => [messages, rootMessageId];
+}
+
 class TypingIndicatorTimeout extends MessageState {
   final int userId;
 
