@@ -141,7 +141,43 @@ class UserOnlineStatusChanged extends MessageState {
   List<Object?> get props => [userId, isOnline];
 }
 
-// Combined States for complex operations
+class UserTypingStatusChanged extends MessageState {
+  final int userId;
+  final bool isTyping;
+  final int targetUserId;
+
+  const UserTypingStatusChanged({
+    required this.userId,
+    required this.isTyping,
+    required this.targetUserId,
+  });
+
+  @override
+  List<Object?> get props => [userId, isTyping, targetUserId];
+}
+
+class TypingIndicatorTimeout extends MessageState {
+  final int userId;
+
+  const TypingIndicatorTimeout({required this.userId});
+
+  @override
+  List<Object?> get props => [userId];
+}
+
+class MessageSearchResults extends MessageState {
+  final String query;
+  final List<MessageWithStatus> results;
+
+  const MessageSearchResults({
+    required this.query,
+    required this.results,
+  });
+
+  @override
+  List<Object?> get props => [query, results];
+}
+
 class MessageOperationSuccess extends MessageState {
   final String message;
   final String? actionType;
@@ -180,4 +216,27 @@ class UnreadCountUpdated extends MessageState {
 
   @override
   List<Object?> get props => [count];
+}
+
+class MessageWithStatus {
+  final Message message;
+  final MessageStatus status;
+  final bool isDelivered;
+  final bool isRead;
+
+  const MessageWithStatus({
+    required this.message,
+    required this.status,
+    required this.isDelivered,
+    required this.isRead,
+  });
+}
+
+enum MessageStatus {
+  sending,
+  sent,
+  delivered,
+  read,
+  failed,
+  received,
 }

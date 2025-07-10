@@ -39,11 +39,22 @@ class MessageService {
         options: options,
       );
 
+      log('getChatList response: $response');
+
       if (response is List) {
         return response.map((json) => ChatSummary.fromJson(json)).toList();
-      } else {
-        throw Exception('Invalid response format');
+      } else if (response is Map<String, dynamic>) {
+        if (response.containsKey('data') && response['data'] is List) {
+          final List<dynamic> data = response['data'];
+          return data.map((json) => ChatSummary.fromJson(json)).toList();
+        } else if (response.containsKey('chats') && response['chats'] is List) {
+          final List<dynamic> chats = response['chats'];
+          return chats.map((json) => ChatSummary.fromJson(json)).toList();
+        }
       }
+
+      throw Exception(
+          'Invalid response format: Expected List or Map with data/chats key');
     } catch (e) {
       log('Error getting chat list: $e');
       throw Exception('Failed to load chat list: $e');
@@ -71,15 +82,27 @@ class MessageService {
         options: options,
       );
 
+      log('getChatHistory response: $response');
+
       if (response is List) {
         return response.map((json) => Message.fromJson(json)).toList();
-      } else if (response is Map<String, dynamic> &&
-          response.containsKey('messages')) {
-        final List<dynamic> messages = response['messages'];
-        return messages.map((json) => Message.fromJson(json)).toList();
-      } else {
-        throw Exception('Invalid response format');
+      } else if (response is Map<String, dynamic>) {
+        final possibleKeys = ['messages', 'data', 'items', 'results'];
+
+        for (final key in possibleKeys) {
+          if (response.containsKey(key) && response[key] is List) {
+            final List<dynamic> messages = response[key];
+            return messages.map((json) => Message.fromJson(json)).toList();
+          }
+        }
+        if (response.containsKey('pagination') ||
+            response.containsKey('total')) {
+          return [];
+        }
       }
+
+      throw Exception(
+          'Invalid response format: Expected List or Map with messages/data key');
     } catch (e) {
       log('Error getting chat history: $e');
       throw Exception('Failed to load chat history: $e');
@@ -99,11 +122,22 @@ class MessageService {
         options: options,
       );
 
+      log('searchMessages response: $response');
+
       if (response is List) {
         return response.map((json) => Message.fromJson(json)).toList();
-      } else {
-        throw Exception('Invalid response format');
+      } else if (response is Map<String, dynamic>) {
+        if (response.containsKey('results') && response['results'] is List) {
+          final List<dynamic> results = response['results'];
+          return results.map((json) => Message.fromJson(json)).toList();
+        } else if (response.containsKey('data') && response['data'] is List) {
+          final List<dynamic> data = response['data'];
+          return data.map((json) => Message.fromJson(json)).toList();
+        }
       }
+
+      throw Exception(
+          'Invalid response format: Expected List or Map with results/data key');
     } catch (e) {
       log('Error searching messages: $e');
       throw Exception('Failed to search messages: $e');
@@ -112,18 +146,8 @@ class MessageService {
 
   Future<Message?> sendMessage(SendMessageRequest request) async {
     try {
-      final options = await _getAuthOptions();
-      final response = await _dioConsumer.post(
-        EndPoint.sendMessage,
-        data: request.toJson(),
-        options: options,
-      );
-
-      if (response is Map<String, dynamic>) {
-        return Message.fromJson(response);
-      } else {
-        throw Exception('Invalid response format');
-      }
+      log('REST API sending not supported by server. Messages must be sent via SignalR.');
+      return null;
     } catch (e) {
       log('Error sending message via REST: $e');
       return null;
@@ -133,10 +157,12 @@ class MessageService {
   Future<bool> markMessageAsRead(int messageId) async {
     try {
       final options = await _getAuthOptions();
-      await _dioConsumer.patch(
+      final response = await _dioConsumer.patch(
         '${EndPoint.markMessageAsRead}/$messageId',
         options: options,
       );
+
+      log('markMessageAsRead response: $response');
       return true;
     } catch (e) {
       log('Error marking message as read: $e');
@@ -151,11 +177,13 @@ class MessageService {
       }
 
       final options = await _getAuthOptions();
-      await _dioConsumer.patch(
+      final response = await _dioConsumer.patch(
         EndPoint.markAllMessagesAsRead,
         data: {'withUserId': withUserId},
         options: options,
       );
+
+      log('markAllMessagesAsRead response: $response');
       return true;
     } catch (e) {
       log('Error marking all messages as read: $e');
@@ -166,10 +194,12 @@ class MessageService {
   Future<bool> deleteMessage(int messageId) async {
     try {
       final options = await _getAuthOptions();
-      await _dioConsumer.delete(
+      final response = await _dioConsumer.delete(
         '${EndPoint.deleteMessage}/$messageId',
         options: options,
       );
+
+      log('deleteMessage response: $response');
       return true;
     } catch (e) {
       log('Error deleting message: $e');
@@ -186,14 +216,53 @@ class MessageService {
         options: options,
       );
 
+      log('getMessageById response: $response');
+
       if (response is Map<String, dynamic>) {
-        return Message.fromJson(response);
-      } else {
-        throw Exception('Invalid response format');
+        if (response.containsKey('message')) {
+          return Message.fromJson(response['message']);
+        } else if (response.containsKey('data')) {
+          return Message.fromJson(response['data']);
+        } else {
+          // Try to parse the response directly
+          return Message.fromJson(response);
+        }
       }
+
+      throw Exception(
+          'Invalid response format: Expected Map with message data');
     } catch (e) {
       log('Error getting message by ID $messageId: $e');
       return null;
+    }
+  }
+
+  bool _isValidResponse(dynamic response) {
+    if (response == null) return false;
+
+    if (response is List) return true;
+
+    if (response is Map<String, dynamic>) {
+      final commonKeys = ['data', 'messages', 'results', 'items', 'message'];
+      return commonKeys.any((key) => response.containsKey(key));
+    }
+
+    return false;
+  }
+
+  Future<bool> testApiConnectivity() async {
+    try {
+      final options = await _getAuthOptions();
+      final response = await _dioConsumer.get(
+        EndPoint.getChatList,
+        options: options,
+      );
+
+      log('API connectivity test response: $response');
+      return _isValidResponse(response);
+    } catch (e) {
+      log('API connectivity test failed: $e');
+      return false;
     }
   }
 }

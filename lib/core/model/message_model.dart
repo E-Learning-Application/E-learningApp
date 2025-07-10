@@ -47,9 +47,9 @@ class ChatSummary {
 
   factory ChatSummary.fromJson(Map<String, dynamic> json) {
     return ChatSummary(
-      userId: json['userId'] ?? 0,
-      userName: json['userName'] ?? '',
-      profileImage: json['profileImage'],
+      userId: json['userId'] ?? json['userID'] ?? 0,
+      userName: json['userName'] ?? json['userName'] ?? '',
+      profileImage: json['profileImage'] ?? json['profileImagePath'],
       lastMessage: json['lastMessage'] ?? '',
       lastMessageTime: DateTime.parse(
           json['lastMessageTime'] ?? DateTime.now().toIso8601String()),
@@ -113,11 +113,12 @@ class Message {
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
       id: json['id'] ?? 0,
-      senderId: json['senderId'] ?? 0,
-      receiverId: json['receiverId'] ?? 0,
+      senderId: json['senderId'] ?? json['senderID'] ?? 0,
+      receiverId: json['receiverId'] ?? json['receiverID'] ?? 0,
       content: json['content'] ?? '',
-      timestamp:
-          DateTime.parse(json['timestamp'] ?? DateTime.now().toIso8601String()),
+      timestamp: DateTime.parse(json['timestamp'] ??
+          json['sentAt'] ??
+          DateTime.now().toIso8601String()),
       isRead: json['isRead'] ?? false,
       messageType: json['messageType'] ?? 'text',
     );

@@ -1,67 +1,61 @@
+import 'package:e_learning_app/feature/messages/data/message_state.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:e_learning_app/core/model/message_model.dart'
+    hide MessageWithStatus, MessageStatus;
+import 'package:e_learning_app/core/service/message_service.dart';
+import 'package:e_learning_app/core/service/signalr_service.dart' as signalr;
 import 'dart:async';
 import 'dart:developer';
-import 'package:e_learning_app/core/service/message_service.dart';
-import 'package:e_learning_app/core/service/signalr_service.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:e_learning_app/core/model/message_model.dart';
-import 'message_state.dart';
 
 class MessageCubit extends Cubit<MessageState> {
   final MessageService _messageService;
-  final SignalRService _signalRService;
+  final signalr.SignalRService _signalRService;
 
-  // Internal state management
-  final Map<int, List<MessageWithStatus>> _chatMessages = {};
-  final Map<int, StreamSubscription> _chatSubscriptions = {};
-  final Map<int, bool> _userTypingStatus = {};
-  List<ChatSummary> _chatList = [];
-  int _totalUnreadCount = 0;
-  int? _currentChatUserId;
-  Timer? _typingTimer;
+  final Map<int, Timer?> _typingTimers = {};
+  final Map<int, bool> _isTypingMap = {};
+  final Map<int, DateTime> _lastTypingTime = {};
+
+  static const Duration _typingTimeout = Duration(seconds: 3);
+  static const Duration _typingDebounce = Duration(milliseconds: 500);
+
+  StreamSubscription? _messageSubscription;
+  StreamSubscription? _typingSubscription;
 
   MessageCubit({
     required MessageService messageService,
-    required SignalRService signalRService,
+    required signalr.SignalRService signalRService,
   })  : _messageService = messageService,
         _signalRService = signalRService,
         super(MessageInitial()) {
-    _initializeSignalRListeners();
+    _setupListeners();
   }
 
-  void _initializeSignalRListeners() {
-    // Listen for new messages
-    _signalRService.onMessageReceived.listen((message) {
+  void _setupListeners() {
+    _messageSubscription = _signalRService.onMessageReceived.listen((message) {
       _handleNewMessage(message);
     });
 
-    // Listen for match events
-    _signalRService.onMatchFound.listen((data) {
-      _handleMatchFound(data);
-    });
-
-    _signalRService.onWebRtcSignal.listen((signal) {
-      // Handle WebRTC signal if needed
-      log('WebRTC signal received: $signal');
+    _typingSubscription = _signalRService.onUserTyping.listen((typingData) {
+      _handleTypingIndicator(typingData);
     });
   }
 
-  // Load chat list
   Future<void> loadChatList() async {
     try {
       emit(MessageLoading());
 
       final chats = await _messageService.getChatList();
-      final unreadCount = await _getUnreadCount();
-
-      _chatList = chats;
-      _totalUnreadCount = unreadCount;
+      final totalUnreadCount = chats.fold<int>(
+        0,
+        (sum, chat) => sum + (chat.unreadCount ?? 0),
+      );
 
       if (chats.isEmpty) {
         emit(ChatListEmpty());
       } else {
         emit(ChatListLoaded(
           chats: chats,
-          totalUnreadCount: unreadCount,
+          totalUnreadCount: totalUnreadCount,
         ));
       }
     } catch (e) {
@@ -70,85 +64,70 @@ class MessageCubit extends Cubit<MessageState> {
     }
   }
 
-  // Load specific chat
-  Future<void> loadChat(int otherUserId, String otherUserName) async {
+  Future<void> loadChatHistory({
+    required int withUserId,
+    int page = 1,
+    int pageSize = 50,
+  }) async {
     try {
       emit(MessageLoading());
 
       final messages = await _messageService.getChatHistory(
-        withUserId: otherUserId,
-        page: 1,
-        pageSize: 50,
+        withUserId: withUserId,
+        page: page,
+        pageSize: pageSize,
       );
 
       final messagesWithStatus = messages
           .map((msg) => MessageWithStatus(
                 message: msg,
-                status: _getMessageStatusFromMessage(msg),
+                status: MessageStatus.sent,
+                isDelivered: true,
+                isRead: false,
               ))
           .toList();
 
-      _chatMessages[otherUserId] = messagesWithStatus;
-      _currentChatUserId = otherUserId;
-
-      // Find user online status from chat list
-      final chatSummary = _chatList.firstWhere(
-        (chat) => chat.userId == otherUserId,
-        orElse: () => ChatSummary(
-          userId: otherUserId,
-          userName: otherUserName,
-          lastMessage: '',
-          lastMessageTime: DateTime.now(),
-          unreadCount: 0,
-          isOnline: false,
-        ),
-      );
-
       if (messages.isEmpty) {
         emit(ChatEmpty(
-          otherUserId: otherUserId,
-          otherUserName: otherUserName,
+          otherUserId: withUserId,
+          otherUserName: 'User $withUserId',
         ));
       } else {
         emit(ChatLoaded(
           messages: messagesWithStatus,
-          otherUserId: otherUserId,
-          otherUserName: otherUserName,
-          isOtherUserOnline: chatSummary.isOnline,
+          otherUserId: withUserId,
+          otherUserName: 'User $withUserId',
+          isOtherUserOnline: true,
         ));
       }
-
-      // Mark messages as read
-      await _markChatMessagesAsRead(otherUserId);
     } catch (e) {
-      log('Error loading chat with user $otherUserId: $e');
-      emit(MessageError(message: 'Failed to load chat: $e'));
+      log('Error loading chat history: $e');
+      emit(MessageError(message: 'Failed to load chat history: $e'));
     }
   }
 
   // Send message
-  Future<void> sendMessage(int receiverId, String content,
-      {String messageType = 'text'}) async {
+  Future<void> sendMessage({
+    required int receiverId,
+    required String content,
+  }) async {
     try {
-      // Create temporary message with sending status
-      final tempMessage = Message(
-        id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
-        senderId: _signalRService.currentUserId ?? 0,
-        receiverId: receiverId,
-        content: content,
-        timestamp: DateTime.now(),
-        isRead: false,
-        messageType: messageType,
-      );
-
-      final messageWithStatus = MessageWithStatus(
-        message: tempMessage,
+      await stopTyping(receiverId);
+      final tempMessage = MessageWithStatus(
+        message: Message(
+          id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
+          senderId: _signalRService.currentUserId ?? 0,
+          receiverId: receiverId,
+          content: content,
+          timestamp: DateTime.now(),
+          isRead: false,
+        ),
         status: MessageStatus.sending,
+        isDelivered: false,
+        isRead: false,
       );
 
-      // Add to local state immediately
-      _addMessageToChat(receiverId, messageWithStatus);
-      emit(MessageSending(message: messageWithStatus));
+      emit(MessageSending(message: tempMessage));
 
       final signalRSuccess = await _signalRService.sendMessage(
         receiverId: receiverId,
@@ -156,109 +135,219 @@ class MessageCubit extends Cubit<MessageState> {
       );
 
       if (signalRSuccess) {
-        // Update message status to sent
-        _updateMessageStatus(tempMessage.id, MessageStatus.sent);
-        emit(MessageSent(message: tempMessage));
-      } else {
-        // Fallback to REST API
-        final sendRequest = SendMessageRequest(
-          receiverId: receiverId,
-          content: content,
-          messageType: messageType,
-        );
+        if (state is ChatLoaded) {
+          final chatState = state as ChatLoaded;
+          final updatedMessages =
+              List<MessageWithStatus>.from(chatState.messages);
+          updatedMessages
+              .removeWhere((msg) => msg.message.id == tempMessage.message.id);
+          updatedMessages.add(MessageWithStatus(
+            message: tempMessage.message,
+            status: MessageStatus.sent,
+            isDelivered: true,
+            isRead: false,
+          ));
 
-        final sentMessage = await _messageService.sendMessage(sendRequest);
+          updatedMessages.sort(
+              (a, b) => a.message.timestamp.compareTo(b.message.timestamp));
 
-        if (sentMessage != null) {
-          // Replace temporary message with actual message
-          _removeMessageFromChat(receiverId, tempMessage.id);
-          _addMessageToChat(
-              receiverId,
-              MessageWithStatus(
-                message: sentMessage,
-                status: MessageStatus.sent,
-              ));
-          emit(MessageSent(message: sentMessage));
-        } else {
-          _updateMessageStatus(tempMessage.id, MessageStatus.failed);
-          emit(MessageSendFailed(
-            content: content,
-            errorMessage: 'Failed to send message',
+          emit(ChatLoaded(
+            messages: updatedMessages,
+            otherUserId: chatState.otherUserId,
+            otherUserName: chatState.otherUserName,
+            isOtherUserOnline: chatState.isOtherUserOnline,
           ));
         }
-      }
 
-      // Refresh current chat if viewing this conversation
-      if (_currentChatUserId == receiverId) {
-        await _refreshCurrentChat();
+        emit(MessageSent(message: tempMessage.message));
+      } else {
+        emit(MessageSendFailed(
+          content: content,
+          errorMessage: 'Failed to send message via SignalR',
+        ));
       }
     } catch (e) {
       log('Error sending message: $e');
       emit(MessageSendFailed(
         content: content,
-        errorMessage: 'Failed to send message: $e',
+        errorMessage: 'Error sending message: $e',
       ));
     }
   }
 
-  Future<void> sendTypingIndicator(int receiverId, bool isTyping) async {
+  Future<void> startTyping(int receiverId) async {
     try {
-      _userTypingStatus[receiverId] = isTyping;
+      _typingTimers[receiverId]?.cancel();
 
-      // Auto-stop typing after 3 seconds
-      if (isTyping) {
-        _typingTimer?.cancel();
-        _typingTimer = Timer(const Duration(seconds: 3), () {
-          _userTypingStatus[receiverId] = false;
-        });
-      } else {
-        _typingTimer?.cancel();
+      final now = DateTime.now();
+      final lastTypingTime = _lastTypingTime[receiverId];
+
+      if (lastTypingTime == null ||
+          now.difference(lastTypingTime) > _typingDebounce) {
+        final success = await _signalRService.sendTypingIndicator(
+          receiverId: receiverId,
+          isTyping: true,
+        );
+
+        if (success) {
+          _lastTypingTime[receiverId] = now;
+          _isTypingMap[receiverId] = true;
+
+          emit(UserTypingStatusChanged(
+            userId: _signalRService.currentUserId ?? 0,
+            isTyping: true,
+            targetUserId: receiverId,
+          ));
+        }
       }
 
-      log('Typing indicator: User $receiverId is ${isTyping ? 'typing' : 'not typing'}');
+      _typingTimers[receiverId] = Timer(_typingTimeout, () {
+        stopTyping(receiverId);
+      });
     } catch (e) {
-      log('Error sending typing indicator: $e');
+      log('Error starting typing indicator: $e');
     }
   }
 
-  // Mark message as read
+  Future<void> stopTyping(int receiverId) async {
+    try {
+      _typingTimers[receiverId]?.cancel();
+      _typingTimers.remove(receiverId);
+
+      if (_isTypingMap[receiverId] == true) {
+        final success = await _signalRService.sendTypingIndicator(
+          receiverId: receiverId,
+          isTyping: false,
+        );
+
+        if (success) {
+          _isTypingMap[receiverId] = false;
+          _lastTypingTime.remove(receiverId);
+
+          emit(UserTypingStatusChanged(
+            userId: _signalRService.currentUserId ?? 0,
+            isTyping: false,
+            targetUserId: receiverId,
+          ));
+        }
+      }
+    } catch (e) {
+      log('Error stopping typing indicator: $e');
+    }
+  }
+
+  void _handleNewMessage(Message message) {
+    try {
+      // Stop typing indicator from sender
+      if (_isTypingMap[message.senderId] == true) {
+        _isTypingMap[message.senderId] = false;
+        emit(UserTypingStatusChanged(
+          userId: message.senderId,
+          isTyping: false,
+          targetUserId: _signalRService.currentUserId ?? 0,
+        ));
+      }
+
+      emit(NewMessageReceived(message: message));
+
+      if (state is ChatLoaded) {
+        final chatState = state as ChatLoaded;
+        if (chatState.otherUserId == message.senderId) {
+          final updatedMessages =
+              List<MessageWithStatus>.from(chatState.messages);
+          updatedMessages.add(MessageWithStatus(
+            message: message,
+            status: MessageStatus.received,
+            isDelivered: true,
+            isRead: false,
+          ));
+
+          updatedMessages.sort(
+              (a, b) => a.message.timestamp.compareTo(b.message.timestamp));
+
+          emit(ChatLoaded(
+            messages: updatedMessages,
+            otherUserId: chatState.otherUserId,
+            otherUserName: chatState.otherUserName,
+            isOtherUserOnline: chatState.isOtherUserOnline,
+          ));
+        }
+      }
+    } catch (e) {
+      log('Error handling new message: $e');
+    }
+  }
+
+  void _handleTypingIndicator(Map<String, dynamic> typingData) {
+    try {
+      final userId = typingData['userId'] as int?;
+      final isTyping = typingData['isTyping'] as bool? ?? false;
+
+      if (userId != null) {
+        _isTypingMap[userId] = isTyping;
+
+        emit(UserTypingStatusChanged(
+          userId: userId,
+          isTyping: isTyping,
+          targetUserId: _signalRService.currentUserId ?? 0,
+        ));
+
+        if (isTyping) {
+          _typingTimers[userId]?.cancel();
+          _typingTimers[userId] = Timer(_typingTimeout, () {
+            if (_isTypingMap[userId] == true) {
+              _isTypingMap[userId] = false;
+              emit(UserTypingStatusChanged(
+                userId: userId,
+                isTyping: false,
+                targetUserId: _signalRService.currentUserId ?? 0,
+              ));
+            }
+          });
+        } else {
+          _typingTimers[userId]?.cancel();
+          _typingTimers.remove(userId);
+        }
+      }
+    } catch (e) {
+      log('Error handling typing indicator: $e');
+    }
+  }
+
+  bool isUserTyping(int userId) {
+    return _isTypingMap[userId] == true;
+  }
+
+  // Get list of users currently typing
+  List<int> getTypingUsers() {
+    return _isTypingMap.entries
+        .where((entry) => entry.value == true)
+        .map((entry) => entry.key)
+        .toList();
+  }
+
   Future<void> markMessageAsRead(int messageId) async {
     try {
       final success = await _messageService.markMessageAsRead(messageId);
       if (success) {
-        _updateMessageStatus(messageId, MessageStatus.read);
         emit(MessageMarkedAsRead(messageId: messageId));
-        await _updateUnreadCount();
       }
     } catch (e) {
       log('Error marking message as read: $e');
     }
   }
 
-  // Mark all messages as read with a user
   Future<void> markAllMessagesAsRead(int withUserId) async {
     try {
       final success = await _messageService.markAllMessagesAsRead(withUserId);
       if (success) {
-        // Update local state
-        final messages = _chatMessages[withUserId] ?? [];
-        for (int i = 0; i < messages.length; i++) {
-          if (messages[i].message.receiverId == _signalRService.currentUserId) {
-            _chatMessages[withUserId]![i] = messages[i].copyWith(
-              status: MessageStatus.read,
-            );
-          }
-        }
-
         emit(MessageOperationSuccess(
           message: 'All messages marked as read',
           actionType: 'mark_all_read',
         ));
-        await _updateUnreadCount();
       }
     } catch (e) {
       log('Error marking all messages as read: $e');
-      emit(MessageError(message: 'Failed to mark messages as read: $e'));
     }
   }
 
@@ -267,23 +356,10 @@ class MessageCubit extends Cubit<MessageState> {
     try {
       final success = await _messageService.deleteMessage(messageId);
       if (success) {
-        _removeMessageFromChats(messageId);
         emit(MessageDeleted(messageId: messageId));
-        emit(MessageOperationSuccess(
-          message: 'Message deleted successfully',
-          actionType: 'delete',
-        ));
-
-        // Refresh current chat
-        if (_currentChatUserId != null) {
-          await _refreshCurrentChat();
-        }
-      } else {
-        emit(MessageError(message: 'Failed to delete message'));
       }
     } catch (e) {
       log('Error deleting message: $e');
-      emit(MessageError(message: 'Failed to delete message: $e'));
     }
   }
 
@@ -293,247 +369,47 @@ class MessageCubit extends Cubit<MessageState> {
       emit(MessageLoading());
       final messages = await _messageService.searchMessages(query);
 
-      emit(MessageOperationSuccess(
-        message: 'Found ${messages.length} messages',
-        actionType: 'search',
-      ));
+      final messagesWithStatus = messages
+          .map((msg) => MessageWithStatus(
+                message: msg,
+                status: MessageStatus.sent,
+                isDelivered: true,
+                isRead: true,
+              ))
+          .toList();
 
-      // You might want to create a specific state for search results
-      // emit(SearchResultsLoaded(messages: messages));
+      emit(MessageSearchResults(
+        query: query,
+        results: messagesWithStatus,
+      ));
     } catch (e) {
       log('Error searching messages: $e');
       emit(MessageError(message: 'Failed to search messages: $e'));
     }
   }
 
-  // Get unread count
-  Future<void> updateUnreadCount() async {
-    await _updateUnreadCount();
+  void cleanupTypingIndicators(int userId) {
+    _typingTimers[userId]?.cancel();
+    _typingTimers.remove(userId);
+    _isTypingMap.remove(userId);
+    _lastTypingTime.remove(userId);
   }
 
-  // Refresh current chat
-  Future<void> refreshCurrentChat() async {
-    if (_currentChatUserId != null) {
-      await _refreshCurrentChat();
+  // Clean up all typing indicators
+  void cleanupAllTypingIndicators() {
+    for (final timer in _typingTimers.values) {
+      timer?.cancel();
     }
-  }
-
-  // Clear current chat
-  void clearCurrentChat() {
-    _currentChatUserId = null;
-    _userTypingStatus.clear();
-    _typingTimer?.cancel();
-  }
-
-  // Get typing status for user
-  bool isUserTyping(int userId) {
-    return _userTypingStatus[userId] ?? false;
-  }
-
-  // Request match
-  Future<void> requestMatch(String matchType) async {
-    try {
-      final success = await _signalRService.requestMatch(matchType);
-      if (success) {
-        emit(MessageOperationSuccess(
-          message: 'Match request sent',
-          actionType: 'match_request',
-        ));
-      } else {
-        emit(MessageError(message: 'Failed to request match'));
-      }
-    } catch (e) {
-      log('Error requesting match: $e');
-      emit(MessageError(message: 'Failed to request match: $e'));
-    }
-  }
-
-  // Private helper methods
-  void _handleNewMessage(Message message) {
-    // Add to appropriate chat
-    final otherUserId = message.senderId == _signalRService.currentUserId
-        ? message.receiverId
-        : message.senderId;
-
-    final messageWithStatus = MessageWithStatus(
-      message: message,
-      status: MessageStatus.delivered,
-    );
-
-    _addMessageToChat(otherUserId, messageWithStatus);
-
-    // Update chat list
-    _updateChatListWithNewMessage(message);
-
-    // Auto-mark as read if currently viewing this chat
-    if (_currentChatUserId == otherUserId &&
-        message.receiverId == _signalRService.currentUserId) {
-      markMessageAsRead(message.id);
-    }
-
-    emit(NewMessageReceived(message: message));
-  }
-
-  void _handleMatchFound(Map<String, dynamic> matchData) {
-    // Handle match found event
-    emit(MessageOperationSuccess(
-      message: 'Match found! You can now start chatting.',
-      actionType: 'match_found',
-    ));
-  }
-
-  void _addMessageToChat(int otherUserId, MessageWithStatus messageWithStatus) {
-    if (!_chatMessages.containsKey(otherUserId)) {
-      _chatMessages[otherUserId] = [];
-    }
-    _chatMessages[otherUserId]!.add(messageWithStatus);
-  }
-
-  void _removeMessageFromChat(int userId, int messageId) {
-    if (_chatMessages.containsKey(userId)) {
-      _chatMessages[userId]!.removeWhere((msg) => msg.message.id == messageId);
-    }
-  }
-
-  void _updateMessageStatus(int messageId, MessageStatus status) {
-    _chatMessages.forEach((userId, messages) {
-      final messageIndex =
-          messages.indexWhere((msg) => msg.message.id == messageId);
-      if (messageIndex != -1) {
-        _chatMessages[userId]![messageIndex] =
-            messages[messageIndex].copyWith(status: status);
-      }
-    });
-  }
-
-  void _removeMessageFromChats(int messageId) {
-    _chatMessages.forEach((userId, messages) {
-      messages.removeWhere((msg) => msg.message.id == messageId);
-    });
-  }
-
-  void _updateChatListWithNewMessage(Message message) {
-    final otherUserId = message.senderId == _signalRService.currentUserId
-        ? message.receiverId
-        : message.senderId;
-
-    final chatIndex =
-        _chatList.indexWhere((chat) => chat.userId == otherUserId);
-    if (chatIndex != -1) {
-      final existingChat = _chatList[chatIndex];
-      _chatList[chatIndex] = ChatSummary(
-        userId: existingChat.userId,
-        userName: existingChat.userName,
-        profileImage: existingChat.profileImage,
-        lastMessage: message.content,
-        lastMessageTime: message.timestamp,
-        unreadCount: existingChat.unreadCount +
-            (message.senderId != _signalRService.currentUserId ? 1 : 0),
-        isOnline: existingChat.isOnline,
-      );
-    }
-  }
-
-  Future<void> _markChatMessagesAsRead(int otherUserId) async {
-    final messages = _chatMessages[otherUserId] ?? [];
-    for (final messageWithStatus in messages) {
-      if (!messageWithStatus.message.isRead &&
-          messageWithStatus.message.receiverId ==
-              _signalRService.currentUserId) {
-        await markMessageAsRead(messageWithStatus.message.id);
-      }
-    }
-  }
-
-  Future<int> _getUnreadCount() async {
-    try {
-      // Calculate unread count from chat list
-      int count = 0;
-      for (final chat in _chatList) {
-        count += chat.unreadCount;
-      }
-      return count;
-    } catch (e) {
-      log('Error getting unread count: $e');
-      return 0;
-    }
-  }
-
-  Future<void> _updateUnreadCount() async {
-    try {
-      final count = await _getUnreadCount();
-      _totalUnreadCount = count;
-      emit(UnreadCountUpdated(count: count));
-    } catch (e) {
-      log('Error updating unread count: $e');
-    }
-  }
-
-  Future<void> _refreshCurrentChat() async {
-    if (_currentChatUserId == null) return;
-
-    try {
-      final messages = await _messageService.getChatHistory(
-        withUserId: _currentChatUserId!,
-        page: 1,
-        pageSize: 50,
-      );
-
-      final messagesWithStatus = messages
-          .map((msg) => MessageWithStatus(
-                message: msg,
-                status: _getMessageStatusFromMessage(msg),
-              ))
-          .toList();
-
-      _chatMessages[_currentChatUserId!] = messagesWithStatus;
-
-      final chatSummary = _chatList.firstWhere(
-        (chat) => chat.userId == _currentChatUserId!,
-        orElse: () => ChatSummary(
-          userId: _currentChatUserId!,
-          userName: 'Unknown',
-          lastMessage: '',
-          lastMessageTime: DateTime.now(),
-          unreadCount: 0,
-          isOnline: false,
-        ),
-      );
-
-      if (messages.isEmpty) {
-        emit(ChatEmpty(
-          otherUserId: _currentChatUserId!,
-          otherUserName: chatSummary.userName,
-        ));
-      } else {
-        emit(ChatLoaded(
-          messages: messagesWithStatus,
-          otherUserId: _currentChatUserId!,
-          otherUserName: chatSummary.userName,
-          isOtherUserOnline: chatSummary.isOnline,
-        ));
-      }
-    } catch (e) {
-      log('Error refreshing current chat: $e');
-    }
-  }
-
-  MessageStatus _getMessageStatusFromMessage(Message message) {
-    if (message.isRead) return MessageStatus.read;
-    // You might want to add more logic here based on your Message model
-    return MessageStatus.delivered;
+    _typingTimers.clear();
+    _isTypingMap.clear();
+    _lastTypingTime.clear();
   }
 
   @override
   Future<void> close() {
-    _chatSubscriptions.values.forEach((subscription) => subscription.cancel());
-    _chatSubscriptions.clear();
-    _typingTimer?.cancel();
-    _chatMessages.clear();
-    _chatList.clear();
-    _userTypingStatus.clear();
-    _currentChatUserId = null;
-
+    _messageSubscription?.cancel();
+    _typingSubscription?.cancel();
+    cleanupAllTypingIndicators();
     return super.close();
   }
 }

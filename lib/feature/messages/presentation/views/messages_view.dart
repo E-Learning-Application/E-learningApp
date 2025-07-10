@@ -79,8 +79,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
           // Navigate to user selection or new chat screen
           _showNewChatDialog();
         },
-        child: const Icon(Icons.add),
         backgroundColor: Colors.blue,
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -500,8 +500,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   void dispose() {
-    // Clean up when leaving the screen
-    _messageCubit.clearCurrentChat();
     super.dispose();
   }
 }

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:async';
 import 'dart:developer';
+import 'package:e_learning_app/core/model/user_model.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,7 +37,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ConnectionState _signalRConnectionState = ConnectionState.disconnected;
   MatchResponse? _currentMatch;
 
-  // Match timeout duration (30 seconds)
   static const Duration _matchTimeout = Duration(seconds: 30);
 
   @override
@@ -45,6 +45,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _initializeServices();
     _setupSignalRListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeSignalRConnection();
+    });
   }
 
   @override
@@ -82,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       authService: context.read<AuthService>(),
     );
 
-    _signalRService = SignalRService();
+    _signalRService = context.read<SignalRService>();
     _webRTCService = WebRTCService();
   }
 
@@ -92,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _handleMatchFound(matchData);
     });
 
-    // Listen for connection state changes
     _connectionStateSubscription =
         _signalRService.onConnectionStateChanged.listen((state) {
       setState(() {
@@ -100,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     });
 
-    // Listen for WebRTC signals
     _webRtcSignalSubscription = _signalRService.onWebRtcSignal.listen((signal) {
       _handleWebRtcSignal(signal);
     });
@@ -116,19 +117,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final authCubit = context.read<AuthCubit>();
     final state = authCubit.state;
 
-    if (state is AuthAuthenticated || state is LoginSuccess) {
-      final user = state is AuthAuthenticated
-          ? state.user
-          : (state as LoginSuccess).user;
-      final accessToken = await context.read<AuthService>().getAccessToken();
+    bool isAuthenticated = false;
+    User? user;
+    String? accessToken;
 
-      if (accessToken != null) {
-        await _signalRService.initialize(
-          userId: user.userId,
-          accessToken: accessToken,
-          enableAutoReconnect: true,
-        );
+    if (state is AuthAuthenticated) {
+      isAuthenticated = true;
+      user = state.user;
+      accessToken = state.accessToken;
+    } else if (state is LoginSuccess) {
+      isAuthenticated = true;
+      user = state.user;
+      accessToken = state.accessToken;
+    } else {
+      try {
+        user = await context.read<AuthService>().getCurrentUser();
+        accessToken = await context.read<AuthService>().getAccessToken();
+
+        if (user != null && accessToken != null) {
+          isAuthenticated = true;
+        }
+      } catch (e) {
+        log('Error checking auth service directly: $e');
       }
+    }
+
+    if (isAuthenticated && user != null && accessToken != null) {
+      await _signalRService.initialize(
+        userId: user.userId,
+        accessToken: accessToken,
+        enableAutoReconnect: true,
+      );
     }
   }
 
@@ -146,11 +165,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _handleMatchFound(Map<String, dynamic> matchData) {
     try {
-      log('Match found data received: $matchData');
       final currentUserId = _signalRService.currentUserId;
       if (currentUserId == null) throw Exception('Current user ID is null');
       final match = MatchResponse.fromJson(matchData, currentUserId);
-      log('Parsed match: ${match.matchedUser.username} (${match.matchType})');
 
       setState(() {
         _isSearchingForMatch = false;
@@ -238,6 +255,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             builder: (context) => ChatScreen(
               match: match,
               matchingService: _matchingService,
+              signalRService: _signalRService,
             ),
           ),
         );
@@ -269,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _declineMatch(MatchResponse match) async {
-    Navigator.pop(context); // Close dialog
+    Navigator.pop(context);
 
     try {
       await _matchingService.endMatch(match.id);
@@ -701,8 +719,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _handleMatchTimeout();
       });
 
-      log('Requesting match via SignalR for type: $matchType');
-
       if (_signalRConnectionState != ConnectionState.connected) {
         // Initialize SignalR connection if not already connected
         if (!_signalRService.isConnected) {
@@ -720,8 +736,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!success) {
         throw Exception('Failed to request match via SignalR');
       }
-
-      log('Match request sent via SignalR for type: $matchType');
     } catch (e) {
       if (!mounted) return;
 
@@ -799,6 +813,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           builder: (context) => ChatScreen(
             match: match,
             matchingService: _matchingService,
+            signalRService: _signalRService,
           ),
         ),
       );
@@ -978,21 +993,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           backgroundColor: Colors.red,
         ),
       );
-    }
-  }
-
-  String _getTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
     }
   }
 }
