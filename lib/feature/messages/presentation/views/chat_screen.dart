@@ -1,7 +1,9 @@
 import 'package:e_learning_app/feature/messages/data/message_cubit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
 import 'dart:async';
+import 'dart:io';
 import '../../../../core/model/match_response.dart';
 import '../../../../core/service/matching_service.dart';
 import '../../../../core/service/signalr_service.dart' as signalr;
@@ -16,6 +18,8 @@ class ChatMessage {
   final DateTime timestamp;
   final MessageType type;
   final MessageStatus status;
+  final String? imageUrl;
+  final File? localImageFile;
 
   ChatMessage({
     required this.id,
@@ -24,6 +28,8 @@ class ChatMessage {
     required this.timestamp,
     this.type = MessageType.text,
     this.status = MessageStatus.sent,
+    this.imageUrl,
+    this.localImageFile,
   });
 
   factory ChatMessage.fromMessageWithStatus(
@@ -34,6 +40,16 @@ class ChatMessage {
       isCurrentUser: messageWithStatus.message.senderId == currentUserId,
       timestamp: messageWithStatus.message.timestamp,
       status: messageWithStatus.status,
+      type: messageWithStatus.message.content.startsWith('http') &&
+              (messageWithStatus.message.content.contains('.jpg') ||
+                  messageWithStatus.message.content.contains('.jpeg') ||
+                  messageWithStatus.message.content.contains('.png') ||
+                  messageWithStatus.message.content.contains('.gif'))
+          ? MessageType.image
+          : MessageType.text,
+      imageUrl: messageWithStatus.message.content.startsWith('http')
+          ? messageWithStatus.message.content
+          : null,
     );
   }
 
@@ -43,6 +59,14 @@ class ChatMessage {
       content: message.content,
       isCurrentUser: message.senderId == currentUserId,
       timestamp: message.timestamp,
+      type: message.content.startsWith('http') &&
+              (message.content.contains('.jpg') ||
+                  message.content.contains('.jpeg') ||
+                  message.content.contains('.png') ||
+                  message.content.contains('.gif'))
+          ? MessageType.image
+          : MessageType.text,
+      imageUrl: message.content.startsWith('http') ? message.content : null,
     );
   }
 }
@@ -68,47 +92,22 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
   bool _isSendingMessage = false;
+  bool _isUploadingImage = false;
   final List<ChatMessage> _messages = [];
-  Timer? _typingTimer;
-  bool _isTyping = false;
 
   @override
   void initState() {
     super.initState();
     _loadChatHistory();
-    _setupMessageListener();
   }
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
-    _typingTimer?.cancel();
     super.dispose();
-  }
-
-  void _setupMessageListener() {
-    _messageController.addListener(() {
-      _handleTyping();
-    });
-  }
-
-  void _handleTyping() {
-    final messageCubit = context.read<MessageCubit>();
-
-    if (_messageController.text.isNotEmpty && !_isTyping) {
-      _isTyping = true;
-      messageCubit.startTyping(widget.match.matchedUser.id);
-    }
-
-    _typingTimer?.cancel();
-    _typingTimer = Timer(const Duration(seconds: 1), () {
-      if (_isTyping) {
-        _isTyping = false;
-        messageCubit.stopTyping(widget.match.matchedUser.id);
-      }
-    });
   }
 
   void _loadChatHistory() {
@@ -119,6 +118,9 @@ class _ChatScreenState extends State<ChatScreen> {
   void _sendMessage() async {
     final messageText = _messageController.text.trim();
     if (messageText.isEmpty || _isSendingMessage) return;
+
+    print(
+        'ChatScreen: Sending message: "$messageText" to user ${widget.match.matchedUser.id}');
 
     setState(() {
       _isSendingMessage = true;
@@ -139,6 +141,144 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
+  void _sendImage(File imageFile) async {
+    if (_isUploadingImage) return;
+
+    setState(() {
+      _isUploadingImage = true;
+    });
+
+    try {
+      // Create temporary message for UI
+      final tempMessage = ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        content: 'Uploading image...',
+        isCurrentUser: true,
+        timestamp: DateTime.now(),
+        type: MessageType.image,
+        status: MessageStatus.sending,
+        localImageFile: imageFile,
+      );
+
+      setState(() {
+        _messages.add(tempMessage);
+      });
+      _scrollToBottom();
+
+      // TODO: Upload image to your server and get URL
+      // For now, we'll simulate this process
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Simulate getting image URL from server
+      final imageUrl =
+          'https://example.com/uploaded_image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      // Send the image URL as message content
+      final messageCubit = context.read<MessageCubit>();
+      await messageCubit.sendMessage(
+        receiverId: widget.match.matchedUser.id,
+        content: imageUrl,
+      );
+
+      // Remove temp message and let the real message come through the cubit
+      setState(() {
+        _messages.removeWhere((msg) => msg.id == tempMessage.id);
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to send image: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isUploadingImage = false;
+      });
+    }
+  }
+
+  void _pickImage() async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 80,
+      );
+
+      if (pickedFile != null) {
+        final File imageFile = File(pickedFile.path);
+        _sendImage(imageFile);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to pick image: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _takePicture() async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 80,
+      );
+
+      if (pickedFile != null) {
+        final File imageFile = File(pickedFile.path);
+        _sendImage(imageFile);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to take picture: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Take a Picture'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePicture();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cancel),
+                title: const Text('Cancel'),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
       Future.delayed(const Duration(milliseconds: 100), () {
@@ -151,6 +291,98 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
     }
+  }
+
+  String getFullImageUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    if (path.startsWith('http')) return path;
+    const baseUrl = 'https://elearningproject.runasp.net';
+    return '$baseUrl$path';
+  }
+
+  void _showFullScreenImage(String imageUrl, {File? localFile}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FullScreenImageViewer(
+          imageUrl: imageUrl,
+          localFile: localFile,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageMessage(ChatMessage message) {
+    final isCurrentUser = message.isCurrentUser;
+    final imageWidget = message.localImageFile != null
+        ? Image.file(
+            message.localImageFile!,
+            width: 200,
+            height: 200,
+            fit: BoxFit.cover,
+          )
+        : message.imageUrl != null
+            ? Image.network(
+                message.imageUrl!,
+                width: 200,
+                height: 200,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    width: 200,
+                    height: 200,
+                    color: Colors.grey[300],
+                    child: const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 200,
+                    height: 200,
+                    color: Colors.grey[300],
+                    child: const Center(
+                      child: Icon(Icons.broken_image, size: 50),
+                    ),
+                  );
+                },
+              )
+            : Container(
+                width: 200,
+                height: 200,
+                color: Colors.grey[300],
+                child: const Center(
+                  child: Icon(Icons.image, size: 50),
+                ),
+              );
+
+    return GestureDetector(
+      onTap: () {
+        if (message.localImageFile != null) {
+          _showFullScreenImage('', localFile: message.localImageFile!);
+        } else if (message.imageUrl != null) {
+          _showFullScreenImage(message.imageUrl!);
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: imageWidget,
+        ),
+      ),
+    );
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -183,10 +415,15 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!isCurrentUser) ...[
             CircleAvatar(
               radius: 18,
-              backgroundImage: widget.match.matchedUser.profilePicture != null
-                  ? NetworkImage(widget.match.matchedUser.profilePicture!)
-                  : null,
-              child: widget.match.matchedUser.profilePicture == null
+              backgroundImage: message.isCurrentUser
+                  ? null
+                  : (widget.match.matchedUser.profilePicture != null &&
+                          widget.match.matchedUser.profilePicture!.isNotEmpty
+                      ? NetworkImage(getFullImageUrl(
+                          widget.match.matchedUser.profilePicture))
+                      : null),
+              child: widget.match.matchedUser.profilePicture == null ||
+                      widget.match.matchedUser.profilePicture!.isEmpty
                   ? Text(
                       widget.match.matchedUser.username[0].toUpperCase(),
                       style: const TextStyle(fontSize: 14),
@@ -200,29 +437,38 @@ class _ChatScreenState extends State<ChatScreen> {
               crossAxisAlignment: align,
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: message.type == MessageType.image
+                      ? const EdgeInsets.all(4)
+                      : const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: bubbleColor,
+                    color: message.type == MessageType.image
+                        ? Colors.transparent
+                        : bubbleColor,
                     borderRadius: radius,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    boxShadow: message.type == MessageType.image
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        message.content,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 16,
+                      if (message.type == MessageType.image)
+                        _buildImageMessage(message)
+                      else
+                        Text(
+                          message.content,
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 16,
+                          ),
                         ),
-                      ),
                       if (isCurrentUser) ...[
                         const SizedBox(height: 4),
                         Row(
@@ -231,7 +477,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             Text(
                               _formatMessageTime(message.timestamp),
                               style: TextStyle(
-                                color: textColor.withOpacity(0.7),
+                                color: message.type == MessageType.image
+                                    ? Colors.grey[600]
+                                    : textColor.withOpacity(0.7),
                                 fontSize: 10,
                               ),
                             ),
@@ -302,67 +550,6 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: EdgeInsets.all(16.0),
         child: CircularProgressIndicator(),
       ),
-    );
-  }
-
-  Widget _buildTypingIndicator() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8, left: 8, right: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundImage: widget.match.matchedUser.profilePicture != null
-                ? NetworkImage(widget.match.matchedUser.profilePicture!)
-                : null,
-            child: widget.match.matchedUser.profilePicture == null
-                ? Text(
-                    widget.match.matchedUser.username[0].toUpperCase(),
-                    style: const TextStyle(fontSize: 12),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTypingDot(0),
-                const SizedBox(width: 4),
-                _buildTypingDot(1),
-                const SizedBox(width: 4),
-                _buildTypingDot(2),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTypingDot(int index) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 600 + (index * 200)),
-      builder: (context, value, child) {
-        return Transform.scale(
-          scale: 0.5 + (value * 0.5),
-          child: Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: Colors.grey[600]?.withOpacity(0.3 + (value * 0.7)),
-              shape: BoxShape.circle,
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -446,11 +633,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (state is ChatLoaded &&
         state.otherUserId == widget.match.matchedUser.id) {
+      print('ChatScreen: Updating messages from ChatLoaded state');
       setState(() {
         _messages.clear();
         _messages.addAll(
           state.messages.map((msg) => ChatMessage.fromMessageWithStatus(
-                msg as dynamic, // Cast to dynamic to bypass type mismatch
+                msg as dynamic,
                 currentUserId,
               )),
         );
@@ -458,6 +646,9 @@ class _ChatScreenState extends State<ChatScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     } else if (state is NewMessageReceived) {
       final message = state.message;
+      print('ChatScreen: Received new message from user ${message.senderId}');
+      print('ChatScreen: Message content: "${message.content}"');
+
       if (message.senderId == widget.match.matchedUser.id ||
           message.receiverId == widget.match.matchedUser.id) {
         setState(() {
@@ -621,18 +812,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   }
 
-                  final messageCubit = context.read<MessageCubit>();
-                  final isOtherUserTyping =
-                      messageCubit.isUserTyping(widget.match.matchedUser.id);
-
                   return ListView.builder(
                     controller: _scrollController,
-                    itemCount: _messages.length + (isOtherUserTyping ? 1 : 0),
+                    itemCount: _messages.length,
                     itemBuilder: (context, index) {
-                      if (index == _messages.length && isOtherUserTyping) {
-                        return _buildTypingIndicator();
-                      }
-
                       final message = _messages[index];
                       return _buildMessageBubble(message);
                     },
@@ -645,6 +828,11 @@ class _ChatScreenState extends State<ChatScreen> {
               color: Colors.white,
               child: Row(
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.image, color: Colors.blueAccent),
+                    onPressed:
+                        _isUploadingImage ? null : _showImagePickerOptions,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _messageController,
@@ -660,19 +848,78 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: _isSendingMessage
+                    icon: _isSendingMessage || _isUploadingImage
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.send, color: Colors.blueAccent),
-                    onPressed: _isSendingMessage ? null : _sendMessage,
+                    onPressed: _isSendingMessage || _isUploadingImage
+                        ? null
+                        : _sendMessage,
                   ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class FullScreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+  final File? localFile;
+
+  const FullScreenImageViewer({
+    Key? key,
+    required this.imageUrl,
+    this.localFile,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: () {
+              // TODO: Implement image download
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Download feature coming soon!')),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          child: localFile != null
+              ? Image.file(localFile!)
+              : Image.network(
+                  imageUrl,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Icon(
+                        Icons.broken_image,
+                        color: Colors.white,
+                        size: 100,
+                      ),
+                    );
+                  },
+                ),
         ),
       ),
     );
