@@ -41,7 +41,8 @@ class WebRTCService {
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
-    ]
+    ],
+    'sdpSemantics': 'unified-plan'
   };
 
   final Map<String, dynamic> _rtcConstraints = {
@@ -111,6 +112,7 @@ class WebRTCService {
       await _requestPermissions(isVideo);
       await _createPeerConnection();
       await _getUserMedia(isVideo);
+      await _processPendingOffer();
 
       _isInCall = true;
       log('Incoming call accepted from user: $callerId');
@@ -225,32 +227,39 @@ class WebRTCService {
         });
       };
 
-      _peerConnection!.onAddStream = (MediaStream stream) {
-        _remoteStream = stream;
-        _remoteStreamController.add(stream);
-        _callStateController.add(CallState.connected);
-        log('Remote stream added');
-      };
-
-      _peerConnection!.onRemoveStream = (MediaStream stream) {
-        _remoteStream = null;
-        log('Remote stream removed');
+      _peerConnection!.onTrack = (RTCTrackEvent event) {
+        log('onTrack event received with ${event.streams.length} streams');
+        if (event.streams.isNotEmpty) {
+          _remoteStream = event.streams[0];
+          _remoteStreamController.add(_remoteStream!);
+          _callStateController.add(CallState.connected);
+          log('Remote track added - stream ID: ${_remoteStream!.id}');
+        } else {
+          log('onTrack event received but no streams available');
+        }
       };
 
       _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-        log('Connection state: $state');
+        log('WebRTC Connection state changed to: $state');
         switch (state) {
           case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
+            log('WebRTC connection established - emitting CallState.connected');
             _callStateController.add(CallState.connected);
             break;
           case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
+            log('WebRTC connection disconnected - emitting CallState.failed');
+            _callStateController.add(CallState.failed);
+            break;
           case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
+            log('WebRTC connection failed - emitting CallState.failed');
             _callStateController.add(CallState.failed);
             break;
           case RTCPeerConnectionState.RTCPeerConnectionStateClosed:
+            log('WebRTC connection closed - emitting CallState.ended');
             _callStateController.add(CallState.ended);
             break;
           default:
+            log('WebRTC connection state: $state (no action taken)');
             break;
         }
       };
@@ -283,7 +292,9 @@ class WebRTCService {
       _localStreamController.add(_localStream!);
 
       if (_peerConnection != null) {
-        await _peerConnection!.addStream(_localStream!);
+        for (final track in _localStream!.getTracks()) {
+          await _peerConnection!.addTrack(track, _localStream!);
+        }
       }
 
       log('Local stream obtained');
@@ -295,6 +306,7 @@ class WebRTCService {
 
   Future<void> _createOffer() async {
     try {
+      log('Creating offer for user: $_currentCallUserId');
       final offer = await _peerConnection!.createOffer();
       await _peerConnection!.setLocalDescription(offer);
 
@@ -305,7 +317,7 @@ class WebRTCService {
         'isVideo': _isVideoCall,
       });
 
-      log('Offer created and sent');
+      log('Offer created and sent to user: $_currentCallUserId');
     } catch (e) {
       log('Failed to create offer: $e');
       throw Exception('Failed to create offer: $e');
@@ -314,6 +326,7 @@ class WebRTCService {
 
   Future<void> _createAnswer() async {
     try {
+      log('Creating answer for user: $_currentCallUserId');
       final answer = await _peerConnection!.createAnswer();
       await _peerConnection!.setLocalDescription(answer);
 
@@ -323,7 +336,7 @@ class WebRTCService {
         'callId': _currentCallId,
       });
 
-      log('Answer created and sent');
+      log('Answer created and sent to user: $_currentCallUserId');
     } catch (e) {
       log('Failed to create answer: $e');
       throw Exception('Failed to create answer: $e');
@@ -366,10 +379,10 @@ class WebRTCService {
       final offer = signal['offer'];
       final callId = signal['callId'];
       final isVideo = signal['isVideo'] ?? false;
+      final callerId = signal['callerId'] ?? 'unknown';
 
       if (_isInCall) {
-        // Reject if already in call
-        await _sendWebRtcSignal(_currentCallUserId!, {
+        await _sendWebRtcSignal(callerId, {
           'type': 'reject',
           'callId': callId,
         });
@@ -377,16 +390,17 @@ class WebRTCService {
       }
 
       _incomingCallController.add(IncomingCall(
-        callerId: _currentCallUserId!,
+        callerId: callerId,
         callId: callId,
         isVideo: isVideo,
       ));
 
       _pendingOffer = RTCSessionDescription(offer['sdp'], offer['type']);
       _currentCallId = callId;
+      _currentCallUserId = callerId;
       _isIncomingCall = true;
 
-      log('Incoming call offer received');
+      log('Incoming call offer received from: $callerId');
     } catch (e) {
       log('Error handling offer: $e');
     }
@@ -399,8 +413,9 @@ class WebRTCService {
       final answer = signal['answer'];
       final rtcAnswer = RTCSessionDescription(answer['sdp'], answer['type']);
 
+      log('Processing answer from remote peer');
       await _peerConnection!.setRemoteDescription(rtcAnswer);
-      log('Answer processed');
+      log('Answer processed successfully');
     } catch (e) {
       log('Error handling answer: $e');
     }
@@ -445,6 +460,10 @@ class WebRTCService {
   Future<void> _sendWebRtcSignal(
       String targetUserId, Map<String, dynamic> signal) async {
     try {
+      if (_signalRService == null) {
+        throw Exception('SignalR service not initialized');
+      }
+
       final signalData = jsonEncode(signal);
       await _signalRService!.sendWebRtcSignal(
         targetUserId: targetUserId,

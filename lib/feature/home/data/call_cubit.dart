@@ -113,7 +113,17 @@ class CallCubit extends Cubit<CallCubitState> {
   })  : _webRTCService = webRTCService,
         _signalRService = signalRService,
         super(CallInitial()) {
+    _initializeWebRTC();
     _setupListeners();
+  }
+
+  Future<void> _initializeWebRTC() async {
+    try {
+      await _webRTCService.initialize(_signalRService);
+      log('WebRTC service initialized successfully');
+    } catch (e) {
+      log('Failed to initialize WebRTC service: $e');
+    }
   }
 
   void _setupListeners() {
@@ -140,20 +150,24 @@ class CallCubit extends Cubit<CallCubitState> {
 
     // Listen to remote stream
     _remoteStreamSubscription = _webRTCService.onRemoteStream.listen((stream) {
+      log('Remote stream received in CallCubit');
       _remoteStream = stream;
     });
   }
 
   void _handleCallStateChange(CallState callState) {
+    log('Call state changed to: $callState, current state: ${state.runtimeType}');
     switch (callState) {
       case CallState.connecting:
         if (state is CallConnecting) {
           // Already connecting, do nothing
+          log('Already in connecting state');
         } else {
           emit(CallConnecting(
             matchType: _webRTCService.isVideoCall ? 'video' : 'voice',
             targetUserId: _webRTCService.currentCallUserId ?? '',
           ));
+          log('Emitted CallConnecting state');
         }
         break;
 
@@ -169,6 +183,7 @@ class CallCubit extends Cubit<CallCubitState> {
             isVideoOff: currentState.isVideoOff,
             isSpeakerOn: currentState.isSpeakerOn,
           ));
+          log('Updated CallConnected state');
         } else {
           // New connected state
           emit(CallConnected(
@@ -176,6 +191,7 @@ class CallCubit extends Cubit<CallCubitState> {
             targetUserId: _webRTCService.currentCallUserId ?? '',
             isVideo: _webRTCService.isVideoCall,
           ));
+          log('Emitted new CallConnected state');
         }
         break;
 
@@ -257,6 +273,7 @@ class CallCubit extends Cubit<CallCubitState> {
 
   Future<void> toggleMute() async {
     try {
+      log('ToggleMute called, current state: ${state.runtimeType}');
       await _webRTCService.toggleAudio();
 
       if (state is CallConnected) {
@@ -269,6 +286,16 @@ class CallCubit extends Cubit<CallCubitState> {
           isVideoOff: currentState.isVideoOff,
           isSpeakerOn: currentState.isSpeakerOn,
         ));
+        log('Audio toggled in connected state');
+      } else if (state is CallConnecting) {
+        final currentState = state as CallConnecting;
+        emit(CallConnecting(
+          matchType: currentState.matchType,
+          targetUserId: currentState.targetUserId,
+        ));
+        log('Audio toggled in connecting state');
+      } else {
+        log('ToggleMute: unexpected state ${state.runtimeType}');
       }
 
       log('Audio toggled');
@@ -291,6 +318,12 @@ class CallCubit extends Cubit<CallCubitState> {
           isVideoOff: !currentState.isVideoOff,
           isSpeakerOn: currentState.isSpeakerOn,
         ));
+      } else if (state is CallConnecting) {
+        final currentState = state as CallConnecting;
+        emit(CallConnecting(
+          matchType: currentState.matchType,
+          targetUserId: currentState.targetUserId,
+        ));
       }
 
       log('Video toggled');
@@ -312,6 +345,14 @@ class CallCubit extends Cubit<CallCubitState> {
       ));
 
       log('Speaker toggled');
+    } else if (state is CallConnecting) {
+      final currentState = state as CallConnecting;
+      emit(CallConnecting(
+        matchType: currentState.matchType,
+        targetUserId: currentState.targetUserId,
+      ));
+
+      log('Speaker toggled (connecting state)');
     }
   }
 

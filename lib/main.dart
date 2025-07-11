@@ -32,6 +32,7 @@ class LanguageLearningApp extends StatelessWidget {
     final interestService = InterestService(dioConsumer: dioConsumer);
     final messageService = MessageService(dioConsumer: dioConsumer);
     final signalRService = SignalRService();
+    final webRTCService = WebRTCService();
 
     return MultiRepositoryProvider(
       providers: [
@@ -40,6 +41,7 @@ class LanguageLearningApp extends StatelessWidget {
         RepositoryProvider<InterestService>.value(value: interestService),
         RepositoryProvider<MessageService>.value(value: messageService),
         RepositoryProvider<SignalRService>.value(value: signalRService),
+        RepositoryProvider<WebRTCService>.value(value: webRTCService),
         RepositoryProvider<DioConsumer>.value(value: dioConsumer),
       ],
       child: MultiBlocProvider(
@@ -76,7 +78,7 @@ class LanguageLearningApp extends StatelessWidget {
           ),
           BlocProvider<CallCubit>(
             create: (context) => CallCubit(
-              webRTCService: WebRTCService(),
+              webRTCService: context.read<WebRTCService>(),
               signalRService: context.read<SignalRService>(),
             ),
           ),

@@ -8,14 +8,14 @@ import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_state.dart';
 import 'package:e_learning_app/feature/language/presentation/view/language_view.dart';
 import 'package:e_learning_app/feature/messages/presentation/views/chat_screen.dart';
-import 'package:e_learning_app/feature/home/presentation/views/video_call_view.dart';
-import 'package:e_learning_app/feature/home/presentation/views/voice_call_view.dart';
+import 'package:e_learning_app/feature/home/presentation/views/unified_call_view.dart';
 import 'package:e_learning_app/feature/home/data/call_cubit.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:async';
 import 'dart:developer';
 import 'package:e_learning_app/core/model/user_model.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -57,9 +57,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _initializeServices();
     _setupSignalRListeners();
     _setupWebRTCListeners();
+    _requestPermissionsOnStart();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeSignalRConnection();
     });
+  }
+
+  Future<void> _requestPermissionsOnStart() async {
+    try {
+      final microphoneStatus = await Permission.microphone.request();
+      if (microphoneStatus != PermissionStatus.granted) {
+        debugPrint('Microphone permission not granted');
+      }
+
+      // Pre-request camera permission for video calls
+      final cameraStatus = await Permission.camera.request();
+      if (cameraStatus != PermissionStatus.granted) {
+        debugPrint('Camera permission not granted');
+      }
+    } catch (e) {
+      debugPrint('Error requesting permissions: $e');
+    }
+  }
+
+  void _showPermissionSettingsDialog(String permissionType) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$permissionType Permission Required'),
+        content: Text(
+            '$permissionType permission is required for calls. Please grant permission in app settings.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -184,8 +226,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (currentUserId == null) throw Exception('Current user ID is null');
       final match = MatchResponse.fromJson(matchData, currentUserId);
       debugPrint('=== DEBUG: Match found ===');
-      debugPrint('Received match type: ${match.matchType}');
-      debugPrint('Expected search type: $_currentSearchType');
+      debugPrint('Backend returned match type: ${match.matchType}');
+      debugPrint('User selected type: $_currentSearchType');
+      debugPrint('Will use user selection: $_currentSearchType');
       debugPrint('Match data: ${matchData.toString()}');
 
       setState(() {
@@ -273,28 +316,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             incomingCall.isVideo,
           );
 
-      // Navigate to appropriate call screen
-      if (incomingCall.isVideo) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VideoCallPage(
-              targetUserId: incomingCall.callerId,
-              targetUserName: incomingCall.callerId,
-            ),
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => UnifiedCallPage(
+            targetUserId: incomingCall.callerId,
+            targetUserName: incomingCall.callerId,
+            isVideoCall: incomingCall.isVideo,
           ),
-        );
-      } else {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VoiceCallPage(
-              targetUserId: incomingCall.callerId,
-              targetUserName: incomingCall.callerId,
-            ),
-          ),
-        );
-      }
+        ),
+      );
     } catch (e) {
       log('Error accepting incoming call: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -317,10 +348,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showMatchFoundDialog(MatchResponse match) {
-    String effectiveMatchType = match.matchType;
-    if (match.matchType == 'text' && _currentSearchType != 'text') {
-      effectiveMatchType = _currentSearchType;
-    }
+    String effectiveMatchType = _currentSearchType;
 
     showDialog(
       context: context,
@@ -359,15 +387,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 fontSize: 14,
               ),
             ),
-            if (match.matchType != effectiveMatchType)
-              Text(
-                '(Backend returned: ${match.matchType})',
-                style: TextStyle(
-                  color: Colors.orange[600],
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                ),
+            Text(
+              '(Backend always returns text, using your selection)',
+              style: TextStyle(
+                color: Colors.blue[600],
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
               ),
+            ),
           ],
         ),
         actions: [
@@ -388,12 +415,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Navigator.pop(context); // Close dialog
 
     try {
-      String effectiveMatchType = match.matchType;
-      if (match.matchType == 'text' && _currentSearchType != 'text') {
-        debugPrint(
-            '=== DEBUG: Backend returned text match type, using original search type: $_currentSearchType ===');
-        effectiveMatchType = _currentSearchType;
-      }
+      String effectiveMatchType =
+          _currentSearchType.isNotEmpty ? _currentSearchType : 'voice';
+      debugPrint(
+          '=== DEBUG: Using original search type: $effectiveMatchType (backend returned: ${match.matchType}) ===');
+      debugPrint(
+          '=== DEBUG: _currentSearchType was: "$_currentSearchType" ===');
 
       if (effectiveMatchType == 'text') {
         // Navigate to chat screen
@@ -409,10 +436,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       } else {
         if (effectiveMatchType == 'video') {
+          debugPrint('=== DEBUG: Starting video call ===');
+
+          final cameraStatus = await Permission.camera.status;
+          final microphoneStatus = await Permission.microphone.status;
+
+          if (cameraStatus != PermissionStatus.granted ||
+              microphoneStatus != PermissionStatus.granted) {
+            final cameraResult = await Permission.camera.request();
+            final microphoneResult = await Permission.microphone.request();
+
+            if (cameraResult != PermissionStatus.granted ||
+                microphoneResult != PermissionStatus.granted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Camera and microphone permissions are required for video calls'),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 5),
+                ),
+              );
+
+              if (cameraResult == PermissionStatus.permanentlyDenied ||
+                  microphoneResult == PermissionStatus.permanentlyDenied) {
+                _showPermissionSettingsDialog('Camera and Microphone');
+              }
+              return;
+            }
+          }
+
           await context
               .read<CallCubit>()
               .startVideoCall(match.matchedUser.id.toString());
         } else {
+          debugPrint('=== DEBUG: Starting voice call ===');
+
+          final microphoneStatus = await Permission.microphone.status;
+
+          if (microphoneStatus != PermissionStatus.granted) {
+            final microphoneResult = await Permission.microphone.request();
+            if (microphoneResult != PermissionStatus.granted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content:
+                      Text('Microphone permission is required for voice calls'),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 5),
+                ),
+              );
+              if (microphoneResult == PermissionStatus.permanentlyDenied) {
+                _showPermissionSettingsDialog('Microphone');
+              }
+              return;
+            }
+          }
+
           await context
               .read<CallCubit>()
               .startVoiceCall(match.matchedUser.id.toString());
@@ -422,62 +500,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       log('Error accepting match: $e');
+
+      String errorMessage =
+          'Failed to start ${_currentSearchType.isNotEmpty ? _currentSearchType : 'voice'}: $e';
+
+      if (e.toString().contains('Permission denied') ||
+          e.toString().contains('microphone')) {
+        errorMessage =
+            'Microphone permission is required for calls. Please grant permission in settings.';
+
+        _showPermissionSettingsDialog('Microphone');
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to start ${match.matchType}: $e'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: Duration(seconds: 5),
         ),
       );
     }
   }
 
   void _navigateToCallScreen(MatchResponse match) {
-    if (match.matchType == 'video') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => VideoCallPage(
-            targetUserId: match.matchedUser.id.toString(),
-            targetUserName: match.matchedUser.username,
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UnifiedCallPage(
+          targetUserId: match.matchedUser.id.toString(),
+          targetUserName: match.matchedUser.username,
+          isVideoCall: match.matchType == 'video',
         ),
-      );
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => VoiceCallPage(
-            targetUserId: match.matchedUser.id.toString(),
-            targetUserName: match.matchedUser.username,
-          ),
-        ),
-      );
-    }
+      ),
+    );
   }
 
   void _navigateToCallScreenWithType(
       MatchResponse match, String effectiveMatchType) {
-    if (effectiveMatchType == 'video') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => VideoCallPage(
-            targetUserId: match.matchedUser.id.toString(),
-            targetUserName: match.matchedUser.username,
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UnifiedCallPage(
+          targetUserId: match.matchedUser.id.toString(),
+          targetUserName: match.matchedUser.username,
+          isVideoCall: effectiveMatchType == 'video',
         ),
-      );
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => VoiceCallPage(
-            targetUserId: match.matchedUser.id.toString(),
-            targetUserName: match.matchedUser.username,
-          ),
-        ),
-      );
-    }
+      ),
+    );
   }
 
   Future<void> _declineMatch(MatchResponse match) async {
@@ -520,6 +589,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 const SizedBox(height: 20),
                 _buildFeatureOptions(),
                 const SizedBox(height: 30),
+                _buildPermissionWarningBar(),
               ],
             ),
           ),
@@ -957,8 +1027,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final authCubit = context.read<AuthCubit>();
 
     // Add debug logging
-    debugPrint('=== DEBUG: Starting match request ===');
-    debugPrint('Requested match type: $matchType');
+    debugPrint('=== DEBUG: User clicked ${matchType.toUpperCase()} button ===');
+    debugPrint('User selected match type: $matchType');
 
     if (!authCubit.isAuthenticated) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1020,14 +1090,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       // Request match through SignalR for all types
-      debugPrint('Sending match request to SignalR with type: $matchType');
+      debugPrint(
+          'Sending match request to backend with user selection: $matchType');
       final success = await _signalRService.requestMatch(matchType);
 
       if (!success) {
         throw Exception('Failed to request match via SignalR');
       }
 
-      debugPrint('Match request sent successfully');
+      debugPrint(
+          'Match request sent successfully - will use user selection regardless of backend response');
     } catch (e) {
       if (!mounted) return;
 
@@ -1095,5 +1167,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         backgroundColor: Colors.grey,
       ),
     );
+  }
+
+  Widget _buildPermissionWarningBar() {
+    return FutureBuilder(
+      future: _getMissingPermissionType(),
+      builder: (context, AsyncSnapshot<String?> snapshot) {
+        if (snapshot.connectionState.toString() != 'ConnectionState.done' ||
+            snapshot.data == null) {
+          return const SizedBox.shrink();
+        }
+        final type = snapshot.data!;
+        String message;
+        if (type == 'video') {
+          message =
+              'Camera and microphone permissions are required for video calls';
+        } else if (type == 'voice') {
+          message = 'Microphone permission is required for voice calls';
+        } else {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          color: Colors.red,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  openAppSettings();
+                },
+                child: const Text(
+                  'Open Settings',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _getMissingPermissionType() async {
+    if (!await Permission.camera.isGranted ||
+        !await Permission.microphone.isGranted) {
+      return 'video';
+    }
+    if (!await Permission.microphone.isGranted) {
+      return 'voice';
+    }
+    return null;
   }
 }
