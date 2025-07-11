@@ -70,6 +70,7 @@ class SignalRService {
   bool get isConnecting => _isConnecting;
   String? get connectionId => _connectionId;
   int? get currentUserId => _currentUserId;
+  String? get accessToken => _accessToken;
   int get queuedMessagesCount => _messageQueue.length;
   int get queuedTypingCount => _typingQueue.length;
   Set<String> get availableServerMethods => Set.from(_availableServerMethods);

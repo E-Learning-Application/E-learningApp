@@ -28,23 +28,32 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
   Timer? _durationTimer;
   DateTime? _callStartTime;
   bool _isVideoMode = false;
+  bool _hasLocalStream = false;
+  bool _hasRemoteStream = false;
 
   @override
   void initState() {
     super.initState();
     _isVideoMode = widget.isVideoCall;
     _startCallTimer();
-    if (_isVideoMode) {
-      _initializeRenderers();
-    }
+    _initializeRenderers();
   }
 
   Future<void> _initializeRenderers() async {
-    await _localRenderer.initialize();
-    await _remoteRenderer.initialize();
-    setState(() {
-      _isInitialized = true;
-    });
+    try {
+      await _localRenderer.initialize();
+      await _remoteRenderer.initialize();
+
+      setState(() {
+        _isInitialized = true;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _updateVideoStreams();
+      });
+    } catch (e) {
+      print('Error initializing renderers: $e');
+    }
   }
 
   @override
@@ -70,17 +79,24 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
   }
 
   void _toggleVideoMode() {
-    setState(() {
-      _isVideoMode = !_isVideoMode;
-    });
+    print('Video toggle called - current mode: $_isVideoMode');
 
-    if (_isVideoMode && !_isInitialized) {
-      _initializeRenderers();
-    }
+    final callCubit = context.read<CallCubit>();
+    final currentState = callCubit.state;
 
-    // Toggle video in the cubit
-    if (context.read<CallCubit>().state is CallConnected) {
-      context.read<CallCubit>().toggleVideo();
+    if (currentState is CallConnected || currentState is CallConnecting) {
+      callCubit.toggleVideo();
+      setState(() {
+        if (currentState is CallConnected) {
+          _isVideoMode = !currentState.isVideoOff;
+        } else {
+          _isVideoMode = !_isVideoMode;
+        }
+      });
+
+      print('Video mode toggled to: $_isVideoMode');
+    } else {
+      print('Cannot toggle video, invalid state: ${currentState.runtimeType}');
     }
   }
 
@@ -100,6 +116,13 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
               ),
             );
             Navigator.of(context).pop();
+          } else if (state is CallConnected) {
+            setState(() {
+              _isVideoMode = state.isVideo && !state.isVideoOff;
+            });
+            _updateVideoStreams();
+          } else if (state is CallConnecting) {
+            _updateVideoStreams();
           }
         },
         child: BlocBuilder<CallCubit, CallCubitState>(
@@ -135,6 +158,61 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
         ),
       ),
     );
+  }
+
+  void _updateVideoStreams() {
+    if (!_isInitialized) return;
+
+    final callCubit = context.read<CallCubit>();
+
+    const green = '\x1B[32m';
+    const reset = '\x1B[0m';
+    print('${green}[DEBUG] Updating video streams...${reset}');
+    print('${green}[DEBUG] Local stream: ${callCubit.localStream}${reset}');
+    if (callCubit.localStream != null) {
+      print(
+          '${green}[DEBUG] Local stream tracks: ${callCubit.localStream!.getTracks().map((t) => t.id).toList()}${reset}');
+    }
+    // Debug prints for remote stream
+    print('${green}[DEBUG] Remote stream: ${callCubit.remoteStream}${reset}');
+    if (callCubit.remoteStream != null) {
+      print(
+          '${green}[DEBUG] Remote stream tracks: ${callCubit.remoteStream!.getTracks().map((t) => t.id).toList()}${reset}');
+    }
+
+    if (callCubit.localStream != null) {
+      if (_localRenderer.srcObject != callCubit.localStream) {
+        _localRenderer.srcObject = callCubit.localStream;
+        print('Local stream updated');
+        setState(() {
+          _hasLocalStream = true;
+        });
+      }
+    } else {
+      if (_hasLocalStream) {
+        _localRenderer.srcObject = null;
+        setState(() {
+          _hasLocalStream = false;
+        });
+      }
+    }
+
+    if (callCubit.remoteStream != null) {
+      if (_remoteRenderer.srcObject != callCubit.remoteStream) {
+        _remoteRenderer.srcObject = callCubit.remoteStream;
+        print('Remote stream updated');
+        setState(() {
+          _hasRemoteStream = true;
+        });
+      }
+    } else {
+      if (_hasRemoteStream) {
+        _remoteRenderer.srcObject = null;
+        setState(() {
+          _hasRemoteStream = false;
+        });
+      }
+    }
   }
 
   Widget _buildStatusBar() {
@@ -228,106 +306,94 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
   }
 
   Widget _buildVoiceContent(CallCubitState state) {
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(flex: 2),
+    return Stack(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Spacer(flex: 2),
 
-          // Profile Avatar
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4C2A1),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Container(
-                width: 80,
-                height: 80,
+              // Profile Avatar
+              Container(
+                width: 120,
+                height: 120,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF4A90E2),
+                  color: const Color(0xFFF4C2A1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  state is CallConnected ? Icons.call : Icons.call_end,
-                  size: 40,
-                  color: Colors.white,
+                child: Center(
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4A90E2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      state is CallConnected ? Icons.call : Icons.call_end,
+                      size: 40,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // Name
+              Text(
+                widget.targetUserName,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // Call Status
+              Text(
+                state is CallConnected ? 'Connected' : 'Connecting...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: state is CallConnected ? Colors.green : Colors.orange,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // Call Duration
+              Text(
+                _callDuration,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+
+              const Spacer(flex: 2),
+            ],
+          ),
+        ),
+        if (state is CallConnected && _isInitialized)
+          Positioned(
+            left: -100,
+            top: -100,
+            child: Container(
+              width: 50,
+              height: 50,
+              child: RTCVideoView(
+                _remoteRenderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
               ),
             ),
           ),
-
-          const SizedBox(height: 30),
-
-          // Name
-          Text(
-            widget.targetUserName,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Call Status
-          Text(
-            state is CallConnected ? 'Connected' : 'Connecting...',
-            style: TextStyle(
-              fontSize: 16,
-              color: state is CallConnected ? Colors.green : Colors.orange,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Call Duration
-          Text(
-            _callDuration,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-
-          const Spacer(flex: 2),
-
-          // Hidden audio renderer for voice calls
-          if (state is CallConnected) _buildHiddenAudioRenderer(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHiddenAudioRenderer() {
-    // Initialize renderers if not already done
-    if (!_isInitialized) {
-      _initializeRenderers();
-    }
-
-    // Update remote stream if available
-    final callCubit = context.read<CallCubit>();
-    if (callCubit.remoteStream != null) {
-      print('Attaching remote stream to audio renderer');
-      _remoteRenderer.srcObject = callCubit.remoteStream;
-    } else {
-      print('Remote stream is null in audio renderer');
-    }
-
-    // Return an invisible container with the audio renderer
-    return Container(
-      width: 1,
-      height: 1,
-      child: RTCVideoView(
-        _remoteRenderer,
-        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-      ),
+      ],
     );
   }
 
@@ -350,6 +416,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
             child: GestureDetector(
               onTap: () {
                 // Toggle layout if needed
+                context.read<CallCubit>().switchCamera();
               },
               child: Container(
                 padding: EdgeInsets.all(8),
@@ -358,7 +425,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
-                  Icons.stay_current_landscape,
+                  Icons.switch_camera,
                   color: Colors.white,
                   size: 20,
                 ),
@@ -378,38 +445,81 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
     }
 
     if (state is CallConnected) {
-      // Update video streams
-      final callCubit = context.read<CallCubit>();
-      if (callCubit.localStream != null) {
-        _localRenderer.srcObject = callCubit.localStream;
-      }
-      if (callCubit.remoteStream != null) {
-        _remoteRenderer.srcObject = callCubit.remoteStream;
-      }
-
       return Column(
         children: [
-          // Main participant (top half)
           Expanded(
             flex: 3,
             child: Container(
               width: double.infinity,
-              child: RTCVideoView(
-                _remoteRenderer,
-                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-              ),
+              child: _hasRemoteStream
+                  ? RTCVideoView(
+                      _remoteRenderer,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    )
+                  : Container(
+                      color: Colors.grey[800],
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.person,
+                              size: 80,
+                              color: Colors.white54,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'Waiting for ${widget.targetUserName}',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
           ),
-
-          // Self view (bottom half)
           Expanded(
             flex: 2,
             child: Container(
               width: double.infinity,
-              child: RTCVideoView(
-                _localRenderer,
-                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-              ),
+              child: _hasLocalStream
+                  ? RTCVideoView(
+                      _localRenderer,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    )
+                  : Container(
+                      color: Colors.grey[700],
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 40,
+                              backgroundColor: Colors.white30,
+                              child: Icon(
+                                Icons.person,
+                                size: 40,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'You',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
           ),
         ],
@@ -455,38 +565,46 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
             flex: 2,
             child: Container(
               width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Colors.blue[300]!, Colors.blue[600]!],
-                ),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.white30,
-                      child: Icon(
-                        Icons.person,
-                        size: 40,
-                        color: Colors.white,
+              child: _hasLocalStream
+                  ? RTCVideoView(
+                      _localRenderer,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Colors.blue[300]!, Colors.blue[600]!],
+                        ),
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 40,
+                              backgroundColor: Colors.white30,
+                              child: Icon(
+                                Icons.person,
+                                size: 40,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'You',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    SizedBox(height: 12),
-                    Text(
-                      'You',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ],
@@ -495,8 +613,11 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
   }
 
   Widget _buildControlButtons(CallCubitState state) {
-    print(
-        'Building control buttons, state: ${state.runtimeType}, isVideoMode: $_isVideoMode');
+    bool isVideoEnabled = false;
+    if (state is CallConnected) {
+      isVideoEnabled = state.isVideo && !state.isVideoOff;
+    }
+
     if (_isVideoMode) {
       return Container(
         padding: EdgeInsets.all(20),
@@ -505,7 +626,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _buildControlButton(
-              icon: _isVideoMode ? Icons.videocam_off : Icons.videocam,
+              icon: isVideoEnabled ? Icons.videocam : Icons.videocam_off,
               onTap: () {
                 print('Video toggle button pressed (video mode)!');
                 if (state is CallConnected || state is CallConnecting) {
@@ -587,7 +708,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
 
             // Video Toggle Button
             _buildControlButton(
-              icon: _isVideoMode ? Icons.videocam_off : Icons.videocam,
+              icon: isVideoEnabled ? Icons.videocam : Icons.videocam_off,
               onTap: () {
                 print('Video toggle button pressed (voice mode)!');
                 if (state is CallConnected || state is CallConnecting) {

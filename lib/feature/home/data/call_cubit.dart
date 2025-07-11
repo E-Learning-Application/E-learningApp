@@ -24,6 +24,8 @@ class CallConnected extends CallCubitState {
   final bool isMuted;
   final bool isVideoOff;
   final bool isSpeakerOn;
+  final MediaStream? localStream;
+  final MediaStream? remoteStream;
 
   CallConnected({
     required this.matchType,
@@ -32,7 +34,31 @@ class CallConnected extends CallCubitState {
     this.isMuted = false,
     this.isVideoOff = false,
     this.isSpeakerOn = false,
+    this.localStream,
+    this.remoteStream,
   });
+
+  CallConnected copyWith({
+    String? matchType,
+    String? targetUserId,
+    bool? isVideo,
+    bool? isMuted,
+    bool? isVideoOff,
+    bool? isSpeakerOn,
+    MediaStream? localStream,
+    MediaStream? remoteStream,
+  }) {
+    return CallConnected(
+      matchType: matchType ?? this.matchType,
+      targetUserId: targetUserId ?? this.targetUserId,
+      isVideo: isVideo ?? this.isVideo,
+      isMuted: isMuted ?? this.isMuted,
+      isVideoOff: isVideoOff ?? this.isVideoOff,
+      isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
+      localStream: localStream ?? this.localStream,
+      remoteStream: remoteStream ?? this.remoteStream,
+    );
+  }
 }
 
 class CallEnded extends CallCubitState {
@@ -61,40 +87,6 @@ class IncomingCallReceived extends CallCubitState {
   });
 }
 
-// Call Events
-abstract class CallEvent {}
-
-class StartVideoCall extends CallEvent {
-  final String targetUserId;
-
-  StartVideoCall({required this.targetUserId});
-}
-
-class StartVoiceCall extends CallEvent {
-  final String targetUserId;
-
-  StartVoiceCall({required this.targetUserId});
-}
-
-class AcceptIncomingCall extends CallEvent {
-  final String callerId;
-  final bool isVideo;
-
-  AcceptIncomingCall({required this.callerId, required this.isVideo});
-}
-
-class RejectIncomingCall extends CallEvent {}
-
-class EndCall extends CallEvent {}
-
-class ToggleMute extends CallEvent {}
-
-class ToggleVideo extends CallEvent {}
-
-class ToggleSpeaker extends CallEvent {}
-
-class SwitchCamera extends CallEvent {}
-
 class CallCubit extends Cubit<CallCubitState> {
   final WebRTCService _webRTCService;
   final SignalRService _signalRService;
@@ -120,9 +112,10 @@ class CallCubit extends Cubit<CallCubitState> {
   Future<void> _initializeWebRTC() async {
     try {
       await _webRTCService.initialize(_signalRService);
-      log('WebRTC service initialized successfully');
+      log('✅ WebRTC service initialized successfully in CallCubit');
     } catch (e) {
-      log('Failed to initialize WebRTC service: $e');
+      log('❌ Failed to initialize WebRTC service: $e');
+      emit(CallFailed(error: 'Failed to initialize WebRTC: $e'));
     }
   }
 
@@ -130,12 +123,14 @@ class CallCubit extends Cubit<CallCubitState> {
     // Listen to call state changes
     _callStateSubscription =
         _webRTCService.onCallStateChanged.listen((callState) {
+      log('📞 CallCubit received call state: $callState');
       _handleCallStateChange(callState);
     });
 
     // Listen to incoming calls
     _incomingCallSubscription =
         _webRTCService.onIncomingCall.listen((incomingCall) {
+      log('📞 CallCubit received incoming call from: ${incomingCall.callerId}');
       emit(IncomingCallReceived(
         callerId: incomingCall.callerId,
         callId: incomingCall.callId,
@@ -143,237 +138,256 @@ class CallCubit extends Cubit<CallCubitState> {
       ));
     });
 
-    // Listen to local stream
+    // Listen to local stream changes
     _localStreamSubscription = _webRTCService.onLocalStream.listen((stream) {
+      log('📺 CallCubit received local stream');
       _localStream = stream;
+      _updateStreamInCurrentState();
     });
 
-    // Listen to remote stream
+    // Listen to remote stream changes
     _remoteStreamSubscription = _webRTCService.onRemoteStream.listen((stream) {
-      log('Remote stream received in CallCubit');
+      log('📺 CallCubit received remote stream');
       _remoteStream = stream;
+      _updateStreamInCurrentState();
     });
   }
 
+  void _updateStreamInCurrentState() {
+    if (state is CallConnected) {
+      final currentState = state as CallConnected;
+      emit(currentState.copyWith(
+        localStream: _localStream,
+        remoteStream: _remoteStream,
+      ));
+      log('📺 Updated streams in CallConnected state');
+    }
+  }
+
   void _handleCallStateChange(CallState callState) {
-    log('Call state changed to: $callState, current state: ${state.runtimeType}');
+    log('🔄 Handling call state change: $callState, current cubit state: ${state.runtimeType}');
+
     switch (callState) {
       case CallState.connecting:
-        if (state is CallConnecting) {
-          // Already connecting, do nothing
-          log('Already in connecting state');
-        } else {
+        if (state is! CallConnecting) {
           emit(CallConnecting(
             matchType: _webRTCService.isVideoCall ? 'video' : 'voice',
             targetUserId: _webRTCService.currentCallUserId ?? '',
           ));
-          log('Emitted CallConnecting state');
+          log('✅ Emitted CallConnecting state');
         }
         break;
 
       case CallState.connected:
+        final targetUserId = _webRTCService.currentCallUserId ?? '';
+        final isVideo = _webRTCService.isVideoCall;
+
         if (state is CallConnected) {
           // Update existing connected state
           final currentState = state as CallConnected;
-          emit(CallConnected(
-            matchType: _webRTCService.isVideoCall ? 'video' : 'voice',
-            targetUserId: _webRTCService.currentCallUserId ?? '',
-            isVideo: _webRTCService.isVideoCall,
-            isMuted: currentState.isMuted,
-            isVideoOff: currentState.isVideoOff,
-            isSpeakerOn: currentState.isSpeakerOn,
+          emit(currentState.copyWith(
+            matchType: isVideo ? 'video' : 'voice',
+            targetUserId: targetUserId,
+            isVideo: isVideo,
+            isMuted: !_webRTCService.isAudioEnabled,
+            isVideoOff: !_webRTCService.isVideoEnabled,
+            localStream: _localStream,
+            remoteStream: _remoteStream,
           ));
-          log('Updated CallConnected state');
+          log('✅ Updated CallConnected state');
         } else {
           // New connected state
           emit(CallConnected(
-            matchType: _webRTCService.isVideoCall ? 'video' : 'voice',
-            targetUserId: _webRTCService.currentCallUserId ?? '',
-            isVideo: _webRTCService.isVideoCall,
+            matchType: isVideo ? 'video' : 'voice',
+            targetUserId: targetUserId,
+            isVideo: isVideo,
+            isMuted: !_webRTCService.isAudioEnabled,
+            isVideoOff: !_webRTCService.isVideoEnabled,
+            localStream: _localStream,
+            remoteStream: _remoteStream,
           ));
-          log('Emitted new CallConnected state');
+          log('✅ Emitted new CallConnected state');
         }
         break;
 
       case CallState.ended:
+        _clearStreams();
         emit(CallEnded(reason: 'Call ended'));
+        log('✅ Emitted CallEnded state');
         break;
 
       case CallState.failed:
+        _clearStreams();
         emit(CallFailed(error: 'Call failed'));
+        log('❌ Emitted CallFailed state');
         break;
 
       case CallState.rejected:
+        _clearStreams();
         emit(CallRejected());
+        log('❌ Emitted CallRejected state');
         break;
 
       default:
+        log('❓ Unhandled call state: $callState');
         break;
     }
   }
 
+  void _clearStreams() {
+    _localStream = null;
+    _remoteStream = null;
+  }
+
   Future<void> startVideoCall(String targetUserId) async {
     try {
+      log('🎥 Starting video call to: $targetUserId');
       emit(CallConnecting(matchType: 'video', targetUserId: targetUserId));
-
       await _webRTCService.startVideoCall(targetUserId);
-
-      log('Video call started to user: $targetUserId');
+      log('✅ Video call started successfully');
     } catch (e) {
-      log('Failed to start video call: $e');
+      log('❌ Failed to start video call: $e');
       emit(CallFailed(error: 'Failed to start video call: $e'));
     }
   }
 
   Future<void> startVoiceCall(String targetUserId) async {
     try {
+      log('🎤 Starting voice call to: $targetUserId');
       emit(CallConnecting(matchType: 'voice', targetUserId: targetUserId));
-
       await _webRTCService.startAudioCall(targetUserId);
-
-      log('Voice call started to user: $targetUserId');
+      log('✅ Voice call started successfully');
     } catch (e) {
-      log('Failed to start voice call: $e');
+      log('❌ Failed to start voice call: $e');
       emit(CallFailed(error: 'Failed to start voice call: $e'));
     }
   }
 
   Future<void> acceptIncomingCall(String callerId, bool isVideo) async {
     try {
+      log('✅ Accepting incoming call from: $callerId, isVideo: $isVideo');
       await _webRTCService.acceptIncomingCall(callerId, isVideo);
-
-      log('Incoming call accepted from user: $callerId');
+      log('✅ Incoming call accepted successfully');
     } catch (e) {
-      log('Failed to accept incoming call: $e');
+      log('❌ Failed to accept incoming call: $e');
       emit(CallFailed(error: 'Failed to accept call: $e'));
     }
   }
 
   Future<void> rejectIncomingCall() async {
     try {
+      log('❌ Rejecting incoming call');
       await _webRTCService.rejectIncomingCall();
       emit(CallInitial());
-
-      log('Incoming call rejected');
+      log('✅ Incoming call rejected successfully');
     } catch (e) {
-      log('Failed to reject incoming call: $e');
+      log('❌ Failed to reject incoming call: $e');
     }
   }
 
   Future<void> endCall() async {
     try {
+      log('📞 Ending call');
       await _webRTCService.endCall();
-      emit(CallEnded(reason: 'Call ended by user'));
-
-      log('Call ended');
+      log('✅ Call ended successfully');
     } catch (e) {
-      log('Failed to end call: $e');
+      log('❌ Failed to end call: $e');
+      emit(CallFailed(error: 'Failed to end call: $e'));
     }
   }
 
   Future<void> toggleMute() async {
     try {
-      log('ToggleMute called, current state: ${state.runtimeType}');
+      log('🔇 Toggling mute, current state: ${state.runtimeType}');
       await _webRTCService.toggleAudio();
 
       if (state is CallConnected) {
         final currentState = state as CallConnected;
-        emit(CallConnected(
-          matchType: currentState.matchType,
-          targetUserId: currentState.targetUserId,
-          isVideo: currentState.isVideo,
-          isMuted: !currentState.isMuted,
-          isVideoOff: currentState.isVideoOff,
-          isSpeakerOn: currentState.isSpeakerOn,
+        emit(currentState.copyWith(
+          isMuted: !_webRTCService.isAudioEnabled,
         ));
-        log('Audio toggled in connected state');
-      } else if (state is CallConnecting) {
-        final currentState = state as CallConnecting;
-        emit(CallConnecting(
-          matchType: currentState.matchType,
-          targetUserId: currentState.targetUserId,
-        ));
-        log('Audio toggled in connecting state');
-      } else {
-        log('ToggleMute: unexpected state ${state.runtimeType}');
+        log('🔇 Audio toggled: muted = ${!_webRTCService.isAudioEnabled}');
       }
-
-      log('Audio toggled');
     } catch (e) {
-      log('Failed to toggle audio: $e');
+      log('❌ Failed to toggle audio: $e');
     }
   }
 
   Future<void> toggleVideo() async {
     try {
+      log('📹 Toggling video');
       await _webRTCService.toggleVideo();
 
       if (state is CallConnected) {
         final currentState = state as CallConnected;
-        emit(CallConnected(
-          matchType: currentState.matchType,
-          targetUserId: currentState.targetUserId,
-          isVideo: currentState.isVideo,
-          isMuted: currentState.isMuted,
-          isVideoOff: !currentState.isVideoOff,
-          isSpeakerOn: currentState.isSpeakerOn,
+        emit(currentState.copyWith(
+          isVideoOff: !_webRTCService.isVideoEnabled,
         ));
-      } else if (state is CallConnecting) {
-        final currentState = state as CallConnecting;
-        emit(CallConnecting(
-          matchType: currentState.matchType,
-          targetUserId: currentState.targetUserId,
-        ));
+        log('📹 Video toggled: off = ${!_webRTCService.isVideoEnabled}');
       }
-
-      log('Video toggled');
     } catch (e) {
-      log('Failed to toggle video: $e');
+      log('❌ Failed to toggle video: $e');
     }
   }
 
   Future<void> toggleSpeaker() async {
     if (state is CallConnected) {
       final currentState = state as CallConnected;
-      emit(CallConnected(
-        matchType: currentState.matchType,
-        targetUserId: currentState.targetUserId,
-        isVideo: currentState.isVideo,
-        isMuted: currentState.isMuted,
-        isVideoOff: currentState.isVideoOff,
+      emit(currentState.copyWith(
         isSpeakerOn: !currentState.isSpeakerOn,
       ));
-
-      log('Speaker toggled');
-    } else if (state is CallConnecting) {
-      final currentState = state as CallConnecting;
-      emit(CallConnecting(
-        matchType: currentState.matchType,
-        targetUserId: currentState.targetUserId,
-      ));
-
-      log('Speaker toggled (connecting state)');
+      log('🔊 Speaker toggled: ${!currentState.isSpeakerOn}');
     }
   }
 
   Future<void> switchCamera() async {
     try {
       await _webRTCService.switchCamera();
-      log('Camera switched');
+      log('📱 Camera switched');
     } catch (e) {
-      log('Failed to switch camera: $e');
+      log('❌ Failed to switch camera: $e');
     }
   }
 
-  // Getters
-  MediaStream? get localStream => _localStream;
-  MediaStream? get remoteStream => _remoteStream;
+  MediaStream? get localStream => _localStream ?? _webRTCService.localStream;
+  MediaStream? get remoteStream => _remoteStream ?? _webRTCService.remoteStream;
   bool get isInCall => _webRTCService.isInCall;
   bool get isVideoCall => _webRTCService.isVideoCall;
+  bool get isVideoEnabled => _webRTCService.isVideoEnabled;
+  bool get isAudioEnabled => _webRTCService.isAudioEnabled;
   String? get currentCallUserId => _webRTCService.currentCallUserId;
+
+  // Additional utility methods
+  bool get hasLocalStream => localStream != null;
+  bool get hasRemoteStream => remoteStream != null;
+  bool get isCallActive => state is CallConnected;
+  bool get isCallInProgress =>
+      state is CallConnecting || state is CallConnected;
+
+  String get callStatusText {
+    switch (state.runtimeType) {
+      case CallInitial:
+        return 'Ready';
+      case CallConnecting:
+        return 'Connecting...';
+      case CallConnected:
+        return 'Connected';
+      case CallEnded:
+        return 'Call Ended';
+      case CallFailed:
+        return 'Call Failed';
+      case CallRejected:
+        return 'Call Rejected';
+      case IncomingCallReceived:
+        return 'Incoming Call';
+      default:
+        return 'Unknown';
+    }
+  }
 
   @override
   Future<void> close() {
+    log('🧹 Closing CallCubit and cleaning up subscriptions');
     _callStateSubscription?.cancel();
     _incomingCallSubscription?.cancel();
     _localStreamSubscription?.cancel();

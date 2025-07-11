@@ -61,6 +61,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeSignalRConnection();
     });
+    final callCubit = context.read<CallCubit>();
+    callCubit.stream.listen((state) {
+      if (state is IncomingCallReceived) {
+        callCubit.acceptIncomingCall(state.callerId, state.isVideo);
+      } else if (state is CallConnected && _currentMatch != null) {
+        debugPrint(
+            '[DEBUG] Navigating to call screen for match: ${_currentMatch!.matchedUser.username}, type: ${state.isVideo ? 'video' : 'voice'}');
+        _navigateToCallScreenWithType(
+            _currentMatch!, state.isVideo ? 'video' : 'voice');
+      } else if (state is CallFailed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(state.error),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    });
   }
 
   Future<void> _requestPermissionsOnStart() async {
@@ -422,8 +440,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint(
           '=== DEBUG: _currentSearchType was: "$_currentSearchType" ===');
 
+      if (effectiveMatchType == 'video') {
+        if (!await Permission.camera.isGranted ||
+            !await Permission.microphone.isGranted) {
+          _showPermissionSettingsDialog('Camera and Microphone');
+          throw Exception(
+              'Camera and microphone permissions required for video calls');
+        }
+      } else if (effectiveMatchType == 'voice') {
+        if (!await Permission.microphone.isGranted) {
+          _showPermissionSettingsDialog('Microphone');
+          throw Exception('Microphone permission required for voice calls');
+        }
+      }
+
       if (effectiveMatchType == 'text') {
-        // Navigate to chat screen
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -435,68 +466,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         );
       } else {
+        final callCubit = context.read<CallCubit>();
         if (effectiveMatchType == 'video') {
-          debugPrint('=== DEBUG: Starting video call ===');
-
-          final cameraStatus = await Permission.camera.status;
-          final microphoneStatus = await Permission.microphone.status;
-
-          if (cameraStatus != PermissionStatus.granted ||
-              microphoneStatus != PermissionStatus.granted) {
-            final cameraResult = await Permission.camera.request();
-            final microphoneResult = await Permission.microphone.request();
-
-            if (cameraResult != PermissionStatus.granted ||
-                microphoneResult != PermissionStatus.granted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                      'Camera and microphone permissions are required for video calls'),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 5),
-                ),
-              );
-
-              if (cameraResult == PermissionStatus.permanentlyDenied ||
-                  microphoneResult == PermissionStatus.permanentlyDenied) {
-                _showPermissionSettingsDialog('Camera and Microphone');
-              }
-              return;
-            }
-          }
-
-          await context
-              .read<CallCubit>()
-              .startVideoCall(match.matchedUser.id.toString());
+          await callCubit.startVideoCall(match.matchedUser.id.toString());
         } else {
-          debugPrint('=== DEBUG: Starting voice call ===');
-
-          final microphoneStatus = await Permission.microphone.status;
-
-          if (microphoneStatus != PermissionStatus.granted) {
-            final microphoneResult = await Permission.microphone.request();
-            if (microphoneResult != PermissionStatus.granted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content:
-                      Text('Microphone permission is required for voice calls'),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 5),
-                ),
-              );
-              if (microphoneResult == PermissionStatus.permanentlyDenied) {
-                _showPermissionSettingsDialog('Microphone');
-              }
-              return;
-            }
-          }
-
-          await context
-              .read<CallCubit>()
-              .startVoiceCall(match.matchedUser.id.toString());
+          await callCubit.startVoiceCall(match.matchedUser.id.toString());
         }
-
-        _navigateToCallScreenWithType(match, effectiveMatchType);
       }
     } catch (e) {
       log('Error accepting match: $e');
