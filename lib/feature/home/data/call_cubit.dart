@@ -313,9 +313,35 @@ class CallCubit extends Cubit<CallCubitState> {
     }
   }
 
+  Future<void> toggleVideoModeWithRenegotiation() async {
+    try {
+      final currentUserId = _webRTCService.currentCallUserId;
+      if (currentUserId == null) {
+        log('❌ No current call user ID for toggling video mode');
+        emit(CallFailed(error: 'No current call user ID'));
+        return;
+      }
+      final wasVideo = _webRTCService.isVideoCall;
+      log('🔄 Renegotiating call: switching from ${wasVideo ? 'video' : 'voice'} to ${!wasVideo ? 'video' : 'voice'}');
+      await endCall();
+      // Small delay to ensure cleanup
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (wasVideo) {
+        await startVoiceCall(currentUserId);
+      } else {
+        await startVideoCall(currentUserId);
+      }
+      log('✅ Renegotiation complete');
+    } catch (e) {
+      log('❌ Failed to toggle video mode with renegotiation: $e');
+      emit(CallFailed(error: 'Failed to toggle video mode: $e'));
+    }
+  }
+
+  @Deprecated('Use toggleVideoModeWithRenegotiation for mode switching')
   Future<void> toggleVideo() async {
     try {
-      log('📹 Toggling video');
+      log('📹 Toggling video (deprecated)');
       await _webRTCService.toggleVideo();
 
       if (state is CallConnected) {

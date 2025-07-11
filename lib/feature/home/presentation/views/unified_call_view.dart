@@ -30,6 +30,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
   bool _isVideoMode = false;
   bool _hasLocalStream = false;
   bool _hasRemoteStream = false;
+  bool _hasPopped = false;
 
   @override
   void initState() {
@@ -78,25 +79,19 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
     });
   }
 
-  void _toggleVideoMode() {
-    print('Video toggle called - current mode: $_isVideoMode');
-
+  Future<void> _toggleVideoModeWithRenegotiation() async {
+    print('Video toggle (renegotiation) called - current mode: $_isVideoMode');
     final callCubit = context.read<CallCubit>();
     final currentState = callCubit.state;
-
     if (currentState is CallConnected || currentState is CallConnecting) {
-      callCubit.toggleVideo();
+      await callCubit.toggleVideoModeWithRenegotiation();
       setState(() {
-        if (currentState is CallConnected) {
-          _isVideoMode = !currentState.isVideoOff;
-        } else {
-          _isVideoMode = !_isVideoMode;
-        }
+        _isVideoMode = !_isVideoMode;
       });
-
-      print('Video mode toggled to: $_isVideoMode');
+      print('Video mode toggled (renegotiation) to: $_isVideoMode');
     } else {
-      print('Cannot toggle video, invalid state: ${currentState.runtimeType}');
+      print(
+          'Cannot toggle video (renegotiation), invalid state: ${currentState.runtimeType}');
     }
   }
 
@@ -106,16 +101,19 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
       value: context.read<CallCubit>(),
       child: BlocListener<CallCubit, CallCubitState>(
         listener: (context, state) {
-          if (state is CallEnded) {
-            Navigator.of(context).pop();
-          } else if (state is CallFailed) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.error),
-                backgroundColor: Colors.red,
-              ),
-            );
-            Navigator.of(context).pop();
+          if ((state is CallEnded || state is CallFailed) && !_hasPopped) {
+            _hasPopped = true;
+            if (mounted && Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+            if (state is CallFailed) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(state.error),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
           } else if (state is CallConnected) {
             setState(() {
               _isVideoMode = state.isVideo && !state.isVideoOff;
@@ -630,7 +628,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
               onTap: () {
                 print('Video toggle button pressed (video mode)!');
                 if (state is CallConnected || state is CallConnecting) {
-                  _toggleVideoMode();
+                  _toggleVideoModeWithRenegotiation();
                 } else {
                   print(
                       'Cannot toggle video (video mode), state is: ${state.runtimeType}');
@@ -712,7 +710,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
               onTap: () {
                 print('Video toggle button pressed (voice mode)!');
                 if (state is CallConnected || state is CallConnecting) {
-                  _toggleVideoMode();
+                  _toggleVideoModeWithRenegotiation();
                 } else {
                   print(
                       'Cannot toggle video (voice mode), state is: ${state.runtimeType}');
