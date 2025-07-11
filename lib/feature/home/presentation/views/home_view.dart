@@ -8,7 +8,9 @@ import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_state.dart';
 import 'package:e_learning_app/feature/language/presentation/view/language_view.dart';
 import 'package:e_learning_app/feature/messages/presentation/views/chat_screen.dart';
-import 'package:e_learning_app/feature/call/presentation/views/call_screen.dart';
+import 'package:e_learning_app/feature/home/presentation/views/video_call_view.dart';
+import 'package:e_learning_app/feature/home/presentation/views/voice_call_view.dart';
+import 'package:e_learning_app/feature/home/data/call_cubit.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:async';
@@ -25,17 +27,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final MatchingService _matchingService;
   late final SignalRService _signalRService;
-  late final WebRTCService _webRTCService;
 
   bool _isSearchingForMatch = false;
   String _currentSearchType = '';
   Timer? _matchTimeoutTimer;
+
+  // Stream subscriptions
   StreamSubscription? _matchFoundSubscription;
   StreamSubscription? _connectionStateSubscription;
   StreamSubscription? _webRtcSignalSubscription;
 
   ConnectionState _signalRConnectionState = ConnectionState.disconnected;
   MatchResponse? _currentMatch;
+  CallState _currentCallState = CallState.idle;
 
   static const Duration _matchTimeout = Duration(seconds: 30);
 
@@ -52,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _initializeServices();
     _setupSignalRListeners();
+    _setupWebRTCListeners();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeSignalRConnection();
     });
@@ -63,7 +68,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _cleanupSubscriptions();
     _matchTimeoutTimer?.cancel();
     _signalRService.disconnect();
-    _webRTCService.dispose();
     super.dispose();
   }
 
@@ -93,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
 
     _signalRService = context.read<SignalRService>();
-    _webRTCService = WebRTCService();
+    context.read<CallCubit>();
   }
 
   void _setupSignalRListeners() {
@@ -110,9 +114,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
 
     _webRtcSignalSubscription = _signalRService.onWebRtcSignal.listen((signal) {
-      _handleWebRtcSignal(signal);
+      log('WebRTC signal received in HomeScreen: $signal');
     });
   }
+
+  void _setupWebRTCListeners() {}
 
   void _cleanupSubscriptions() {
     _matchFoundSubscription?.cancel();
@@ -171,10 +177,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _handleMatchFound(Map<String, dynamic> matchData) {
+    debugPrint('Match found event received: \n');
+    debugPrint(matchData.toString());
     try {
       final currentUserId = _signalRService.currentUserId;
       if (currentUserId == null) throw Exception('Current user ID is null');
       final match = MatchResponse.fromJson(matchData, currentUserId);
+      debugPrint('=== DEBUG: Match found ===');
+      debugPrint('Received match type: ${match.matchType}');
+      debugPrint('Expected search type: $_currentSearchType');
+      debugPrint('Match data: ${matchData.toString()}');
 
       setState(() {
         _isSearchingForMatch = false;
@@ -191,13 +203,125 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _handleWebRtcSignal(String signal) {
-    if (_currentMatch != null) {
-      _webRTCService.handleSignal(signal);
+  void _handleIncomingCall(IncomingCall incomingCall) {
+    _showIncomingCallDialog(incomingCall);
+  }
+
+  void _handleCallStateChange(CallState callState) {
+    switch (callState) {
+      case CallState.connected:
+        if (_currentMatch != null) {
+          _navigateToCallScreen(_currentMatch!);
+        }
+        break;
+      case CallState.ended:
+      case CallState.rejected:
+      case CallState.failed:
+        // Call ended, no need to update state
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _showIncomingCallDialog(IncomingCall incomingCall) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(incomingCall.isVideo
+            ? 'Incoming Video Call'
+            : 'Incoming Voice Call'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              incomingCall.isVideo ? Icons.videocam : Icons.call,
+              size: 64,
+              color: incomingCall.isVideo ? Colors.blue : Colors.green,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'From: ${incomingCall.callerId}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _rejectIncomingCall(),
+            child: const Text('Reject', style: TextStyle(color: Colors.red)),
+          ),
+          ElevatedButton(
+            onPressed: () => _acceptIncomingCall(incomingCall),
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _acceptIncomingCall(IncomingCall incomingCall) async {
+    Navigator.pop(context); // Close dialog
+
+    try {
+      await context.read<CallCubit>().acceptIncomingCall(
+            incomingCall.callerId,
+            incomingCall.isVideo,
+          );
+
+      // Navigate to appropriate call screen
+      if (incomingCall.isVideo) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VideoCallPage(
+              targetUserId: incomingCall.callerId,
+              targetUserName: incomingCall.callerId,
+            ),
+          ),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VoiceCallPage(
+              targetUserId: incomingCall.callerId,
+              targetUserName: incomingCall.callerId,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      log('Error accepting incoming call: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to accept call: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _rejectIncomingCall() async {
+    Navigator.pop(context); // Close dialog
+
+    try {
+      await context.read<CallCubit>().rejectIncomingCall();
+    } catch (e) {
+      log('Error rejecting incoming call: $e');
     }
   }
 
   void _showMatchFoundDialog(MatchResponse match) {
+    String effectiveMatchType = match.matchType;
+    if (match.matchType == 'text' && _currentSearchType != 'text') {
+      effectiveMatchType = _currentSearchType;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -229,12 +353,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 8),
             Text(
-              'Match Type: ${match.matchType.toUpperCase()}',
+              'Match Type: ${effectiveMatchType.toUpperCase()}',
               style: TextStyle(
                 color: Colors.grey[600],
                 fontSize: 14,
               ),
             ),
+            if (match.matchType != effectiveMatchType)
+              Text(
+                '(Backend returned: ${match.matchType})',
+                style: TextStyle(
+                  color: Colors.orange[600],
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
           ],
         ),
         actions: [
@@ -255,7 +388,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Navigator.pop(context); // Close dialog
 
     try {
-      if (match.matchType == 'text') {
+      String effectiveMatchType = match.matchType;
+      if (match.matchType == 'text' && _currentSearchType != 'text') {
+        debugPrint(
+            '=== DEBUG: Backend returned text match type, using original search type: $_currentSearchType ===');
+        effectiveMatchType = _currentSearchType;
+      }
+
+      if (effectiveMatchType == 'text') {
         // Navigate to chat screen
         Navigator.push(
           context,
@@ -268,20 +408,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         );
       } else {
-        // Initialize WebRTC and navigate to call screen
-        await _webRTCService.initialize();
+        if (effectiveMatchType == 'video') {
+          await context
+              .read<CallCubit>()
+              .startVideoCall(match.matchedUser.id.toString());
+        } else {
+          await context
+              .read<CallCubit>()
+              .startVoiceCall(match.matchedUser.id.toString());
+        }
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CallScreen(
-              match: match,
-              webRTCService: _webRTCService,
-              signalRService: _signalRService,
-              isVideo: match.matchType == 'video',
-            ),
-          ),
-        );
+        _navigateToCallScreenWithType(match, effectiveMatchType);
       }
     } catch (e) {
       log('Error accepting match: $e');
@@ -289,6 +426,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         SnackBar(
           content: Text('Failed to start ${match.matchType}: $e'),
           backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _navigateToCallScreen(MatchResponse match) {
+    if (match.matchType == 'video') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoCallPage(
+            targetUserId: match.matchedUser.id.toString(),
+            targetUserName: match.matchedUser.username,
+          ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VoiceCallPage(
+            targetUserId: match.matchedUser.id.toString(),
+            targetUserName: match.matchedUser.username,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _navigateToCallScreenWithType(
+      MatchResponse match, String effectiveMatchType) {
+    if (effectiveMatchType == 'video') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoCallPage(
+            targetUserId: match.matchedUser.id.toString(),
+            targetUserName: match.matchedUser.username,
+          ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VoiceCallPage(
+            targetUserId: match.matchedUser.id.toString(),
+            targetUserName: match.matchedUser.username,
+          ),
         ),
       );
     }
@@ -328,9 +514,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 _buildHeader(),
                 const SizedBox(height: 10),
                 _buildConnectionStatus(),
-                // const SizedBox(height: 10),
-                // _buildDebugSection(),
                 const SizedBox(height: 10),
+                if (_currentCallState != CallState.idle) _buildCallStatus(),
                 if (_isSearchingForMatch) _buildSearchingIndicator(),
                 const SizedBox(height: 20),
                 _buildFeatureOptions(),
@@ -450,6 +635,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildCallStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: _getCallStatusColor().withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _getCallStatusColor().withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: _getCallStatusColor(),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _getCallStatusText(),
+              style: TextStyle(
+                color: _getCallStatusColor(),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_currentCallState == CallState.connected)
+            TextButton(
+              onPressed: () => context.read<CallCubit>().endCall(),
+              child: const Text('End Call'),
+            ),
+        ],
+      ),
+    );
+  }
+
   Color _getConnectionStatusColor() {
     switch (_signalRConnectionState) {
       case ConnectionState.connected:
@@ -460,8 +685,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case ConnectionState.disconnected:
         return Colors.red;
       case ConnectionState.waiting:
-        // TODO: Handle this case.
-        throw UnimplementedError();
+        return Colors.blue;
     }
   }
 
@@ -476,8 +700,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case ConnectionState.disconnected:
         return 'Disconnected • Matching unavailable';
       case ConnectionState.waiting:
-        // TODO: Handle this case.
-        throw UnimplementedError();
+        return 'Waiting for connection...';
+    }
+  }
+
+  Color _getCallStatusColor() {
+    switch (_currentCallState) {
+      case CallState.connecting:
+        return Colors.orange;
+      case CallState.connected:
+        return Colors.green;
+      case CallState.failed:
+      case CallState.rejected:
+        return Colors.red;
+      default:
+        return Colors.blue;
+    }
+  }
+
+  String _getCallStatusText() {
+    switch (_currentCallState) {
+      case CallState.connecting:
+        return 'Connecting call...';
+      case CallState.connected:
+        return 'In call • ${context.read<CallCubit>().isVideoCall ? 'Video' : 'Voice'}';
+      case CallState.failed:
+        return 'Call failed';
+      case CallState.rejected:
+        return 'Call rejected';
+      case CallState.ended:
+        return 'Call ended';
+      default:
+        return 'Call idle';
     }
   }
 
@@ -552,7 +806,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           icon: Icons.videocam_rounded,
           onTap: () => _handleFeatureAccess(context, 'video'),
           isLoading: _isSearchingForMatch && _currentSearchType == 'video',
-          isEnabled: _signalRConnectionState == ConnectionState.connected,
+          isEnabled: _signalRConnectionState == ConnectionState.connected &&
+              _currentCallState == CallState.idle,
         ),
         const SizedBox(height: 16),
         // Voice Call Button
@@ -563,7 +818,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           icon: Icons.mic_rounded,
           onTap: () => _handleFeatureAccess(context, 'voice'),
           isLoading: _isSearchingForMatch && _currentSearchType == 'voice',
-          isEnabled: _signalRConnectionState == ConnectionState.connected,
+          isEnabled: _signalRConnectionState == ConnectionState.connected &&
+              _currentCallState == CallState.idle,
         ),
         const SizedBox(height: 16),
         // Chat Button
@@ -642,7 +898,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   Text(
-                    !isEnabled ? 'Connection required' : subtitle,
+                    !isEnabled ? _getDisabledReason() : subtitle,
                     style: const TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
@@ -662,6 +918,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  String _getDisabledReason() {
+    if (_signalRConnectionState != ConnectionState.connected) {
+      return 'Connection required';
+    }
+    if (_currentCallState != CallState.idle) {
+      return 'Call in progress';
+    }
+    return 'Unavailable';
   }
 
   void _handleLanguageSettings(
@@ -690,6 +956,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _handleFeatureAccess(BuildContext context, String matchType) async {
     final authCubit = context.read<AuthCubit>();
 
+    // Add debug logging
+    debugPrint('=== DEBUG: Starting match request ===');
+    debugPrint('Requested match type: $matchType');
+
     if (!authCubit.isAuthenticated) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -716,6 +986,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
+    if (_currentCallState != CallState.idle) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot search while in a call'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Use the matching system for all match types (text, video, voice)
     setState(() {
       _isSearchingForMatch = true;
       _currentSearchType = matchType;
@@ -738,12 +1019,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
 
-      // Request match through SignalR only
+      // Request match through SignalR for all types
+      debugPrint('Sending match request to SignalR with type: $matchType');
       final success = await _signalRService.requestMatch(matchType);
 
       if (!success) {
         throw Exception('Failed to request match via SignalR');
       }
+
+      debugPrint('Match request sent successfully');
     } catch (e) {
       if (!mounted) return;
 
@@ -756,7 +1040,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to request match: 24{e.toString()}'),
+          content: Text('Failed to request match: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -811,196 +1095,5 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         backgroundColor: Colors.grey,
       ),
     );
-  }
-
-  void _resumeMatch(MatchResponse match) {
-    if (match.matchType == 'text') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ChatScreen(
-            match: match,
-            matchingService: _matchingService,
-            signalRService: _signalRService,
-          ),
-        ),
-      );
-    } else {
-      // Resume video/voice call
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => CallScreen(
-            match: match,
-            webRTCService: _webRTCService,
-            signalRService: _signalRService,
-            isVideo: match.matchType == 'video',
-          ),
-        ),
-      );
-    }
-  }
-
-  void _endMatch(MatchResponse match) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('End Match'),
-        content: Text(
-            'Are you sure you want to end the match with ${match.matchedUser.username}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('End Match', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        final success = await _matchingService.endMatch(match.id);
-        if (success) {
-          setState(() {}); // Refresh the matches list
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Match ended successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to end match'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error ending match: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<List<MatchResponse>> _getActiveMatches() async {
-    final authCubit = context.read<AuthCubit>();
-    if (!authCubit.isAuthenticated) {
-      return [];
-    }
-
-    try {
-      return await _matchingService.getMatches();
-    } catch (e) {
-      throw Exception('Failed to load matches: $e');
-    }
-  }
-
-  Widget _buildDebugSection() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Debug Tools',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _testServerConnection,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  child: const Text(
-                    'Test Server',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _testSignalRConnection,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  child: const Text(
-                    'Test SignalR',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _testServerConnection() async {
-    try {
-      final result = await _matchingService.testServerConnection();
-      if (result != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Server Test: ${result['status']} - User: ${result['currentUser']} - Matches: ${result['matches']}'),
-            backgroundColor:
-                result['status'] == 'connected' ? Colors.green : Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Server Test Failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _testSignalRConnection() async {
-    try {
-      final success = await _signalRService.testConnection();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('SignalR Test: ${success ? 'Connected' : 'Failed'}'),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('SignalR Test Failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 }

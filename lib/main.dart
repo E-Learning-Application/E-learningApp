@@ -5,11 +5,13 @@ import 'package:e_learning_app/core/service/interest_service.dart';
 import 'package:e_learning_app/core/service/language_service.dart';
 import 'package:e_learning_app/core/service/message_service.dart';
 import 'package:e_learning_app/core/service/signalr_service.dart';
+import 'package:e_learning_app/core/service/webrtc_service.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/language/data/language_cubit.dart';
 import 'package:e_learning_app/feature/messages/data/message_cubit.dart';
 import 'package:e_learning_app/feature/profile/data/user_cubit.dart';
 import 'package:e_learning_app/feature/settings/data/language_mangment_cubit.dart';
+import 'package:e_learning_app/feature/home/data/call_cubit.dart';
 import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -69,6 +71,12 @@ class LanguageLearningApp extends StatelessWidget {
           BlocProvider<MessageCubit>(
             create: (context) => MessageCubit(
               messageService: context.read<MessageService>(),
+              signalRService: context.read<SignalRService>(),
+            ),
+          ),
+          BlocProvider<CallCubit>(
+            create: (context) => CallCubit(
+              webRTCService: WebRTCService(),
               signalRService: context.read<SignalRService>(),
             ),
           ),
