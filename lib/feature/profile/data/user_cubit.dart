@@ -221,11 +221,18 @@ class UserCubit extends Cubit<UserState> {
         return;
       }
 
+      // Get current user to ensure we always have the username
+      final currentUser = authCubit.currentUser;
+      if (currentUser == null) {
+        emit(UserError(message: 'Current user not available'));
+        return;
+      }
+
       Map<String, dynamic> formData = {};
 
-      if (username != null) {
-        formData['Username'] = username;
-      }
+      // Always include the username - use the new one if provided, otherwise use current
+      final usernameToSend = username ?? currentUser.username;
+      formData['Username'] = usernameToSend;
 
       if (bio != null) {
         formData['Bio'] = bio;
@@ -260,6 +267,24 @@ class UserCubit extends Cubit<UserState> {
       if (e.response?.statusCode == 401) {
         emit(UserError(message: 'Unauthorized access. Please login again.'));
         authCubit.setUnauthenticated();
+      } else if (e.response?.statusCode == 400) {
+        // Handle 400 errors with custom message from API
+        final errorData = e.response?.data;
+        if (errorData is Map<String, dynamic> &&
+            errorData.containsKey('errors')) {
+          final errors = errorData['errors'] as Map<String, dynamic>;
+          final errorMessages = errors.values
+              .expand((e) => e is List ? e : [e])
+              .where((e) => e is String)
+              .cast<String>()
+              .join(', ');
+          emit(UserError(
+              message: errorMessages.isNotEmpty
+                  ? errorMessages
+                  : 'Invalid request'));
+        } else {
+          emit(UserError(message: 'Invalid request'));
+        }
       } else {
         emit(UserError(message: 'Network error: ${e.message}'));
       }

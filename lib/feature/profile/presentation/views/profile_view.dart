@@ -150,7 +150,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     context.read<UserCubit>().updateUserProfile(
-          username: usernameChanged ? username : null,
+          username: username, // Always pass the username (current or updated)
           bio: bioChanged ? bio : null,
           image: imageChanged ? _selectedImage : null,
         );
@@ -166,75 +166,119 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
 
+    // State variables for password visibility
+    bool showCurrentPassword = false;
+    bool showNewPassword = false;
+    bool showConfirmPassword = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Update Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: currentPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Current Password',
-                border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Update Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Current Password Field
+              TextField(
+                controller: currentPasswordController,
+                obscureText: !showCurrentPassword,
+                decoration: InputDecoration(
+                  labelText: 'Current Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      showCurrentPassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        showCurrentPassword = !showCurrentPassword;
+                      });
+                    },
+                  ),
+                ),
               ),
+              const SizedBox(height: 16),
+              // New Password Field
+              TextField(
+                controller: newPasswordController,
+                obscureText: !showNewPassword,
+                decoration: InputDecoration(
+                  labelText: 'New Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      showNewPassword ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        showNewPassword = !showNewPassword;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Confirm New Password Field
+              TextField(
+                controller: confirmPasswordController,
+                obscureText: !showConfirmPassword,
+                decoration: InputDecoration(
+                  labelText: 'Confirm New Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      showConfirmPassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        showConfirmPassword = !showConfirmPassword;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: newPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'New Password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: confirmPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Confirm New Password',
-                border: OutlineInputBorder(),
-              ),
+            ElevatedButton(
+              onPressed: () {
+                if (newPasswordController.text.isEmpty ||
+                    currentPasswordController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please fill all fields')),
+                  );
+                  return;
+                }
+
+                if (newPasswordController.text !=
+                    confirmPasswordController.text) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Passwords do not match')),
+                  );
+                  return;
+                }
+
+                final request = UpdatePasswordRequest(
+                  currentPassword: currentPasswordController.text,
+                  newPassword: newPasswordController.text,
+                  confirmNewPassword: confirmPasswordController.text,
+                );
+                context.read<UserCubit>().updatePassword(request);
+                Navigator.of(context).pop();
+              },
+              child: const Text('Update'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (newPasswordController.text.isEmpty ||
-                  currentPasswordController.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please fill all fields')),
-                );
-                return;
-              }
-
-              if (newPasswordController.text !=
-                  confirmPasswordController.text) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Passwords do not match')),
-                );
-                return;
-              }
-
-              final request = UpdatePasswordRequest(
-                currentPassword: currentPasswordController.text,
-                newPassword: newPasswordController.text,
-                confirmNewPassword: confirmPasswordController.text,
-              );
-              context.read<UserCubit>().updatePassword(request);
-              Navigator.of(context).pop();
-            },
-            child: const Text('Update'),
-          ),
-        ],
       ),
     );
   }

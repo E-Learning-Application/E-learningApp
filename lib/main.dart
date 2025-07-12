@@ -16,6 +16,9 @@ import 'package:e_learning_app/feature/splash/presentation/views/splash_view.dar
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+final RouteObserver<ModalRoute<void>> routeObserver =
+    RouteObserver<ModalRoute<void>>();
+
 void main() {
   runApp(const LanguageLearningApp());
 }
@@ -91,6 +94,7 @@ class LanguageLearningApp extends StatelessWidget {
             fontFamily: 'Roboto',
           ),
           home: SplashView(),
+          navigatorObservers: [routeObserver],
         ),
       ),
     );
