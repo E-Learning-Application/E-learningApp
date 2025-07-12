@@ -64,12 +64,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final callCubit = context.read<CallCubit>();
     callCubit.stream.listen((state) {
       if (state is IncomingCallReceived) {
-        callCubit.acceptIncomingCall(state.callerId, state.isVideo);
-      } else if (state is CallConnected && _currentMatch != null) {
-        debugPrint(
-            '[DEBUG] Navigating to call screen for match: ${_currentMatch!.matchedUser.username}, type: ${state.isVideo ? 'video' : 'voice'}');
-        _navigateToCallScreenWithType(
-            _currentMatch!, state.isVideo ? 'video' : 'voice');
+        // For match-based calls, we don't want to show incoming call dialog
+        // Only show dialog for direct calls (not from matching)
+        if (_currentMatch == null) {
+          _showIncomingCallDialog(IncomingCall(
+            callerId: state.callerId,
+            callId: state.callId,
+            isVideo: state.isVideo,
+          ));
+        }
+      } else if (state is CallConnected) {
+        // Only navigate if we have a valid match or if this is an incoming call
+        if (_currentMatch != null && state.targetUserId.isNotEmpty) {
+          debugPrint(
+              '[DEBUG] Navigating to call screen for match: ${_currentMatch!.matchedUser.username}, type: ${state.isVideo ? 'video' : 'voice'}');
+          _navigateToCallScreenWithType(
+              _currentMatch!, state.isVideo ? 'video' : 'voice');
+        } else if (state.targetUserId.isNotEmpty) {
+          // This is an incoming call that was accepted
+          debugPrint(
+              '[DEBUG] Navigating to call screen for incoming call: ${state.targetUserId}, type: ${state.isVideo ? 'video' : 'voice'}');
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => UnifiedCallPage(
+                targetUserId: state.targetUserId,
+                targetUserName:
+                    state.targetUserId, // Use ID as name for incoming calls
+                isVideoCall: state.isVideo,
+              ),
+            ),
+          );
+        } else {
+          debugPrint(
+              '[DEBUG] CallConnected but no valid targetUserId, skipping navigation');
+        }
       } else if (state is CallFailed) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -77,6 +106,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             backgroundColor: Colors.red,
           ),
         );
+        // Clear the current match when call fails
+        setState(() {
+          _currentMatch = null;
+        });
+      } else if (state is CallEnded) {
+        // Handle call ended state
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Call ended: ${state.reason}'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        // Clear the current match when call ends
+        setState(() {
+          _currentMatch = null;
+        });
       }
     });
   }
@@ -329,21 +376,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Navigator.pop(context); // Close dialog
 
     try {
+      // Don't navigate immediately - let the CallCubit state change handle navigation
       await context.read<CallCubit>().acceptIncomingCall(
             incomingCall.callerId,
             incomingCall.isVideo,
           );
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => UnifiedCallPage(
-            targetUserId: incomingCall.callerId,
-            targetUserName: incomingCall.callerId,
-            isVideoCall: incomingCall.isVideo,
-          ),
-        ),
-      );
+      // The navigation will be handled in the CallCubit listener when CallConnected state is emitted
     } catch (e) {
       log('Error accepting incoming call: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -467,10 +506,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       } else {
         final callCubit = context.read<CallCubit>();
-        if (effectiveMatchType == 'video') {
-          await callCubit.startVideoCall(match.matchedUser.id.toString());
+
+        // Use user ID comparison to determine who initiates the call
+        // Lower ID starts the call to prevent conflicts
+        final currentUserId = _signalRService.currentUserId;
+        final matchedUserId = match.matchedUser.id;
+
+        if (currentUserId != null && matchedUserId != null) {
+          final shouldInitiateCall = int.parse(currentUserId.toString()) <
+              int.parse(matchedUserId.toString());
+
+          if (shouldInitiateCall) {
+            // This user will initiate the call
+            debugPrint(
+                '[DEBUG] This user will initiate the call (ID: $currentUserId < ${matchedUserId})');
+
+            if (effectiveMatchType == 'video') {
+              await callCubit.startVideoCall(match.matchedUser.id.toString());
+            } else {
+              await callCubit.startVoiceCall(match.matchedUser.id.toString());
+            }
+          } else {
+            // This user will wait for the other to initiate
+            debugPrint(
+                '[DEBUG] This user will wait for call (ID: $currentUserId >= ${matchedUserId})');
+
+            // Wait for incoming call
+            // The call will be handled automatically when the offer is received
+          }
         } else {
-          await callCubit.startVoiceCall(match.matchedUser.id.toString());
+          // Fallback: both try to initiate (original behavior)
+          debugPrint('[DEBUG] Fallback: both users will try to initiate call');
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          if (effectiveMatchType == 'video') {
+            await callCubit.startVideoCall(match.matchedUser.id.toString());
+          } else {
+            await callCubit.startVoiceCall(match.matchedUser.id.toString());
+          }
         }
       }
     } catch (e) {

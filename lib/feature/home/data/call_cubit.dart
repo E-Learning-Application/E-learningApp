@@ -182,6 +182,12 @@ class CallCubit extends Cubit<CallCubitState> {
         final targetUserId = _webRTCService.currentCallUserId ?? '';
         final isVideo = _webRTCService.isVideoCall;
 
+        // Only emit connected state if we have a valid target user ID
+        if (targetUserId.isEmpty) {
+          log('⚠️ Cannot emit connected state: no target user ID');
+          return;
+        }
+
         if (state is CallConnected) {
           // Update existing connected state
           final currentState = state as CallConnected;
@@ -294,6 +300,11 @@ class CallCubit extends Cubit<CallCubitState> {
       log('❌ Failed to end call: $e');
       emit(CallFailed(error: 'Failed to end call: $e'));
     }
+  }
+
+  void resetCallState() {
+    log('🔄 Resetting call state to initial');
+    emit(CallInitial());
   }
 
   Future<void> toggleMute() async {

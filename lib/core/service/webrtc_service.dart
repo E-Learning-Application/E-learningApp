@@ -128,6 +128,13 @@ class WebRTCService {
         throw Exception('Already in a call');
       }
 
+      // Check if we're already trying to call this user
+      if (_currentCallUserId == targetUserId && _currentCallId != null) {
+        _magentaLog(
+            '⚠️ Already initiating call to $targetUserId, ignoring duplicate request');
+        return;
+      }
+
       _isVideoCall = isVideo;
       _isVideoEnabled = isVideo;
       _isAudioEnabled = true;
@@ -146,6 +153,9 @@ class WebRTCService {
 
       _isInCall = true;
       _magentaLog('Call initiated to user: $targetUserId');
+
+      // Don't emit connected state here - wait for answer to be received
+      // The connected state will be emitted when the answer is processed
     } catch (e) {
       _magentaLog('Failed to initiate call: $e');
       _callStateController.add(CallState.failed);
@@ -188,6 +198,10 @@ class WebRTCService {
 
       _isInCall = true;
       _magentaLog('Incoming call accepted from user: $callerId');
+
+      // Add a small delay before emitting connected state to ensure everything is ready
+      await Future.delayed(const Duration(milliseconds: 300));
+      _callStateController.add(CallState.connected);
     } catch (e) {
       _magentaLog('Failed to accept call: $e');
       _callStateController.add(CallState.failed);
@@ -495,6 +509,7 @@ class WebRTCService {
         'callerId':
             _signalRService?.currentUserId?.toString(), // <-- Added callerId
         'isVideo': _isVideoCall,
+        'isMatchBased': true, // Mark as match-based call
       });
 
       _magentaLog('✅ Offer created and sent');
@@ -664,13 +679,15 @@ class WebRTCService {
       final callId = signal['callId'];
       final isVideo = signal['isVideo'] ?? false;
       final callerId = signal['callerId'];
+      final isMatchBased = signal['isMatchBased'] ?? false;
 
       if (!offer.containsKey('sdp') || !offer.containsKey('type')) {
         _magentaLog('❌ Invalid offer format: missing sdp or type');
         return;
       }
 
-      _magentaLog('📨 Received offer from $callerId, isVideo: $isVideo');
+      _magentaLog(
+          '📨 Received offer from $callerId, isVideo: $isVideo, isMatchBased: $isMatchBased');
 
       if (_isInCall) {
         _magentaLog('⚠️ Already in call, rejecting offer');
@@ -681,16 +698,32 @@ class WebRTCService {
         return;
       }
 
+      // Check if we already have a pending offer from the same caller
+      if (_pendingOffer != null && _currentCallUserId == callerId) {
+        _magentaLog(
+            '⚠️ Already have pending offer from this caller, ignoring duplicate');
+        return;
+      }
+
       _pendingOffer = RTCSessionDescription(offer['sdp'], offer['type']);
       _currentCallId = callId;
       _currentCallUserId = callerId;
       _isIncomingCall = true;
 
-      _incomingCallController.add(IncomingCall(
-        callerId: callerId,
-        callId: callId,
-        isVideo: isVideo,
-      ));
+      // Only emit incoming call event if it's not match-based
+      if (!isMatchBased) {
+        _incomingCallController.add(IncomingCall(
+          callerId: callerId,
+          callId: callId,
+          isVideo: isVideo,
+        ));
+      } else {
+        // For match-based calls, automatically accept the call
+        _magentaLog('🤝 Auto-accepting match-based call from $callerId');
+        // Small delay to ensure everything is ready
+        await Future.delayed(const Duration(milliseconds: 200));
+        await acceptIncomingCall(callerId, isVideo);
+      }
 
       _magentaLog('✅ Incoming call offer processed');
     } catch (e) {
@@ -723,6 +756,11 @@ class WebRTCService {
       await _processPendingIceCandidates();
 
       _logStreamStatus();
+
+      // Emit connected state after answer is processed
+      await Future.delayed(const Duration(milliseconds: 200));
+      _callStateController.add(CallState.connected);
+      _magentaLog('✅ Call connected state emitted');
     } catch (e) {
       _magentaLog('❌ Error handling answer: $e');
       _callStateController.add(CallState.failed);
