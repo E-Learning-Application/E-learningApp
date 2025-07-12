@@ -107,7 +107,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
 
   bool _canProceed() {
     if (isInterestsStep) {
-      return true; // Interests are optional
+      return selectedInterests.isNotEmpty; // Interests are required
     }
     return languageProficiencies
         .containsKey(widget.selectedLanguages[currentLanguageIndex].id);
@@ -559,7 +559,7 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Choose topics you\'d like to learn about (optional)',
+              'Choose at least one topic you\'d like to talk about',
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey[600],

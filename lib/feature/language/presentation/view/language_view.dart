@@ -303,14 +303,17 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    language.flag ?? _getDefaultFlag(language.name),
-                    style: const TextStyle(
-                      fontSize: 28,
+                  Center(
+                    child: Text(
+                      language.flag ?? _getDefaultFlag(language.name),
+                      style: const TextStyle(
+                        fontSize: 22, // Smaller size
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Flexible(
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
                     child: Text(
                       language.name,
                       style: const TextStyle(
@@ -318,9 +321,9 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
                         fontWeight: FontWeight.w500,
                         color: Colors.black87,
                       ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                     ),
                   ),
                 ],

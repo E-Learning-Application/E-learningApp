@@ -133,10 +133,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final username = _usernameController.text.trim();
     final bio = _bioController.text.trim();
 
+    // Check if anything has changed
+    final bool usernameChanged = username != (_currentUser?.username ?? "");
+    final bool bioChanged = bio != (_currentUser?.bio ?? "");
+    final bool imageChanged = _selectedImage != null;
+
+    if (!usernameChanged && !bioChanged && !imageChanged) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No changes were Made')),
+      );
+      setState(() {
+        _isEditing = false;
+        _selectedImage = null;
+      });
+      return;
+    }
+
     context.read<UserCubit>().updateUserProfile(
-          username: username.isNotEmpty ? username : null,
-          bio: bio.isNotEmpty ? bio : null,
-          image: _selectedImage,
+          username: usernameChanged ? username : null,
+          bio: bioChanged ? bio : null,
+          image: imageChanged ? _selectedImage : null,
         );
 
     setState(() {
@@ -323,8 +339,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       _buildHeader(),
                       const SizedBox(height: 24),
-                      _buildProfileAvatar(user),
-                      const SizedBox(height: 24),
                       _buildProfileForm(user),
                       const SizedBox(height: 24),
                       if (user?.languagePreferences != null)
@@ -481,88 +495,94 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildProfileForm(User? user) {
-    return Column(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Username field
-        _isEditing && _isCurrentUser()
-            ? TextField(
-                controller: _usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
-              )
-            : Text(
-                user?.username ?? 'Username not available',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+        // Profile image on the left
+        _buildProfileAvatar(user),
+        const SizedBox(width: 20),
 
-        const SizedBox(height: 16),
-
-        // Bio field
-        _isEditing && _isCurrentUser()
-            ? TextField(
-                controller: _bioController,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Bio',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.info),
-                ),
-              )
-            : Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Text(
-                  user?.bio ?? 'No bio available',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[700],
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-
-        if (_isEditing && _isCurrentUser()) ...[
-          const SizedBox(height: 16),
-          Row(
+        // Username and bio on the right
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _updateProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text(
-                    'Save Changes',
-                    style: TextStyle(color: Colors.white),
-                  ),
+              // Username field
+              _isEditing && _isCurrentUser()
+                  ? TextField(
+                      controller: _usernameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Username',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
+                      ),
+                    )
+                  : Text(
+                      user?.username ?? 'Username not available',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+              const SizedBox(height: 16),
+
+              // Bio field
+              _isEditing && _isCurrentUser()
+                  ? TextField(
+                      controller: _bioController,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Bio',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.info),
+                      ),
+                    )
+                  : Text(
+                      user?.bio ?? 'No bio available',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        height: 1.3,
+                      ),
+                    ),
+
+              if (_isEditing && _isCurrentUser()) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: ElevatedButton(
+                        onPressed: _updateProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        child: const Text(
+                          'Save Changes',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 40,
+                      child: OutlinedButton(
+                        onPressed: _toggleEdit,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        child: const Icon(Icons.close, size: 20),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _toggleEdit,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text('Cancel'),
-                ),
-              ),
+              ],
             ],
           ),
-        ],
+        ),
       ],
     );
   }
