@@ -101,6 +101,9 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
   }
 
   Future<void> _toggleVideoMode() async {
+    // Only allow video toggle in video calls
+    if (!widget.isVideoCall) return;
+
     print('Video toggle called - current mode: $_isVideoMode');
     final callCubit = context.read<CallCubit>();
     final currentState = callCubit.state;
@@ -561,17 +564,18 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
             },
           ),
 
-          // Video Toggle Button
-          _buildControlButton(
-            icon: _localVideoEnabled ? Icons.videocam : Icons.videocam_off,
-            isActive: _localVideoEnabled,
-            onTap: () {
-              print('Video toggle button pressed!');
-              if (state is CallConnected || state is CallConnecting) {
-                _toggleVideoMode();
-              }
-            },
-          ),
+          // Video Toggle Button - Only show for video calls
+          if (widget.isVideoCall)
+            _buildControlButton(
+              icon: _localVideoEnabled ? Icons.videocam : Icons.videocam_off,
+              isActive: _localVideoEnabled,
+              onTap: () {
+                print('Video toggle button pressed!');
+                if (state is CallConnected || state is CallConnecting) {
+                  _toggleVideoMode();
+                }
+              },
+            ),
 
           // Speaker Button
           _buildControlButton(
