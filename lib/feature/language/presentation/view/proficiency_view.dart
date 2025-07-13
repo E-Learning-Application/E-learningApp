@@ -172,24 +172,6 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
               isProcessingInterests = false;
               isLoadingInterests = false;
             });
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(state.message)),
-                  ],
-                ),
-                backgroundColor: Colors.red,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                duration: const Duration(seconds: 4),
-              ),
-            );
           }
         },
         child: SafeArea(
@@ -943,15 +925,6 @@ class _ProficiencyPageState extends State<ProficiencyPage> {
       setState(() {
         isRegistering = false;
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('An error occurred during registration. Please try again.'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
   }
 
