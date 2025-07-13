@@ -30,6 +30,10 @@ class WebRTCService {
   RTCSessionDescription? _pendingOffer;
   final List<RTCIceCandidate> _pendingIceCandidates = [];
 
+  // Video toggle state
+  bool _isVideoToggling = false;
+  bool _hasVideoTrack = false;
+
   final StreamController<MediaStream> _localStreamController =
       StreamController<MediaStream>.broadcast();
   final StreamController<MediaStream> _remoteStreamController =
@@ -50,11 +54,14 @@ class WebRTCService {
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
       {'urls': 'stun:stun3.l.google.com:19302'},
+      // Add TURN servers for better connectivity
+      // {'urls': 'turn:your-turn-server.com:3478', 'username': 'user', 'credential': 'pass'},
     ],
     'sdpSemantics': 'unified-plan',
     'bundlePolicy': 'max-bundle',
     'rtcpMuxPolicy': 'require',
     'enableDscp': true,
+    'iceCandidatePoolSize': 10, // Improve ICE gathering
   };
 
   final Map<String, dynamic> _rtcConstraints = {
@@ -93,33 +100,7 @@ class WebRTCService {
   }
 
   Future<void> startAudioCall(String targetUserId) async {
-    try {
-      if (_isInCall) {
-        throw Exception('Already in a call');
-      }
-      _isVideoCall = false;
-      _isVideoEnabled = false;
-      _isAudioEnabled = true;
-      _currentCallUserId = targetUserId;
-      _currentCallId = DateTime.now().millisecondsSinceEpoch.toString();
-      _isIncomingCall = false;
-
-      _magentaLog('Starting audio call to $targetUserId');
-      _callStateController.add(CallState.connecting);
-
-      await _requestPermissions(false);
-      await _createPeerConnection();
-      await _getUserMedia(false);
-      await _createOfferWithTimeout();
-
-      _isInCall = true;
-      _magentaLog('Call initiated to user: $targetUserId');
-    } catch (e, stackTrace) {
-      _magentaLog('Failed to initiate call: $e\nStackTrace: $stackTrace');
-      _callStateController.add(CallState.failed);
-      await _cleanupCall();
-      throw Exception('Failed to start call: $e');
-    }
+    await _initiateCall(targetUserId, false);
   }
 
   Future<void> _initiateCall(String targetUserId, bool isVideo) async {
@@ -141,6 +122,7 @@ class WebRTCService {
       _currentCallUserId = targetUserId;
       _currentCallId = DateTime.now().millisecondsSinceEpoch.toString();
       _isIncomingCall = false;
+      _hasVideoTrack = isVideo;
 
       _magentaLog(
           'Starting ${isVideo ? 'video' : 'audio'} call to $targetUserId');
@@ -153,9 +135,6 @@ class WebRTCService {
 
       _isInCall = true;
       _magentaLog('Call initiated to user: $targetUserId');
-
-      // Don't emit connected state here - wait for answer to be received
-      // The connected state will be emitted when the answer is processed
     } catch (e) {
       _magentaLog('Failed to initiate call: $e');
       _callStateController.add(CallState.failed);
@@ -181,6 +160,7 @@ class WebRTCService {
       _isAudioEnabled = true;
       _currentCallUserId = callerId;
       _isIncomingCall = false;
+      _hasVideoTrack = isVideo;
 
       _magentaLog(
           'Accepting ${isVideo ? 'video' : 'audio'} call from $callerId');
@@ -190,16 +170,12 @@ class WebRTCService {
       await _createPeerConnection();
       await _getUserMedia(isVideo);
       await _processPendingOffer();
-      if (_peerConnection != null) {
-        _magentaLog(
-            'PeerConnection state after setRemoteDescription: ${_peerConnection!.signalingState}');
-      }
       await _createAnswer();
 
       _isInCall = true;
       _magentaLog('Incoming call accepted from user: $callerId');
 
-      // Add a small delay before emitting connected state to ensure everything is ready
+      // Add a small delay before emitting connected state
       await Future.delayed(const Duration(milliseconds: 300));
       _callStateController.add(CallState.connected);
     } catch (e) {
@@ -244,19 +220,153 @@ class WebRTCService {
     }
   }
 
+  // Enhanced video toggle with smooth transition
   Future<void> toggleVideo() async {
+    if (!_isInCall || _isVideoToggling) {
+      _magentaLog('Cannot toggle video: not in call or already toggling');
+      return;
+    }
+
     try {
-      if (_localStream != null) {
-        final videoTracks = _localStream!.getVideoTracks();
-        if (videoTracks.isNotEmpty) {
-          final videoTrack = videoTracks.first;
-          _isVideoEnabled = !_isVideoEnabled;
-          videoTrack.enabled = _isVideoEnabled;
-          _magentaLog('Video toggled: $_isVideoEnabled');
-        }
+      _isVideoToggling = true;
+      _magentaLog('🔄 Toggling video: current state = $_isVideoEnabled');
+
+      if (_hasVideoTrack) {
+        // Simply enable/disable existing video track
+        await _toggleVideoTrack();
+      } else {
+        // Need to add video track for the first time
+        await _addVideoTrack();
       }
+
+      _magentaLog('✅ Video toggle completed');
     } catch (e) {
-      _magentaLog('Failed to toggle video: $e');
+      _magentaLog('❌ Failed to toggle video: $e');
+      throw Exception('Failed to toggle video: $e');
+    } finally {
+      _isVideoToggling = false;
+    }
+  }
+
+  Future<void> _toggleVideoTrack() async {
+    if (_localStream != null) {
+      final videoTracks = _localStream!.getVideoTracks();
+      if (videoTracks.isNotEmpty) {
+        final videoTrack = videoTracks.first;
+        _isVideoEnabled = !_isVideoEnabled;
+        videoTrack.enabled = _isVideoEnabled;
+
+        // Update call type if disabling video completely
+        if (!_isVideoEnabled) {
+          _isVideoCall = false;
+        }
+
+        _magentaLog('Video track toggled: enabled = $_isVideoEnabled');
+      }
+    }
+  }
+
+  // NEW: Add video track to existing audio call
+  Future<void> addVideoTrack() async {
+    if (!_isInCall || _isVideoToggling || _hasVideoTrack) {
+      _magentaLog(
+          'Cannot add video track: not in call, toggling, or already has video');
+      return;
+    }
+
+    try {
+      _isVideoToggling = true;
+      await _addVideoTrack();
+    } catch (e) {
+      _magentaLog('❌ Failed to add video track: $e');
+      throw Exception('Failed to add video track: $e');
+    } finally {
+      _isVideoToggling = false;
+    }
+  }
+
+  Future<void> _addVideoTrack() async {
+    try {
+      _magentaLog('📹 Adding video track to existing call');
+
+      // Request camera permission
+      await _requestPermissions(true);
+
+      // Get video stream
+      final videoConstraints = {
+        'video': {
+          'mandatory': {
+            'minWidth': '640',
+            'minHeight': '480',
+            'minFrameRate': '30',
+          },
+          'facingMode': 'user',
+          'optional': [],
+        }
+      };
+
+      final videoStream =
+          await navigator.mediaDevices.getUserMedia(videoConstraints);
+      final videoTrack = videoStream.getVideoTracks().first;
+
+      // Add video track to existing stream
+      if (_localStream != null) {
+        _localStream!.addTrack(videoTrack);
+      } else {
+        _localStream = videoStream;
+      }
+
+      // Add track to peer connection
+      if (_peerConnection != null) {
+        await _peerConnection!.addTrack(videoTrack, _localStream!);
+        _magentaLog('✅ Video track added to peer connection');
+
+        // Trigger renegotiation
+        await _renegotiateConnection();
+      }
+
+      _isVideoEnabled = true;
+      _isVideoCall = true;
+      _hasVideoTrack = true;
+
+      // Update local stream
+      _localStreamController.add(_localStream!);
+
+      _magentaLog('✅ Video track added successfully');
+    } catch (e) {
+      _magentaLog('❌ Failed to add video track: $e');
+      throw e;
+    }
+  }
+
+  Future<void> _renegotiateConnection() async {
+    if (_peerConnection == null || _currentCallUserId == null) {
+      return;
+    }
+
+    try {
+      _magentaLog('🔄 Renegotiating connection for video track');
+
+      // Create new offer with video
+      final offerOptions = {
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': true,
+      };
+
+      final offer = await _peerConnection!.createOffer(offerOptions);
+      await _peerConnection!.setLocalDescription(offer);
+
+      // Send renegotiation offer
+      await _sendWebRtcSignal(_currentCallUserId!, {
+        'type': 'renegotiate',
+        'offer': offer.toMap(),
+        'callId': _currentCallId,
+      });
+
+      _magentaLog('✅ Renegotiation offer sent');
+    } catch (e) {
+      _magentaLog('❌ Failed to renegotiate connection: $e');
+      throw e;
     }
   }
 
@@ -329,25 +439,27 @@ class WebRTCService {
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       _magentaLog('🎯 onTrack event received');
       _magentaLog('Track kind: ${event.track?.kind}');
-      _magentaLog('Track id: ${event.track?.id}');
       _magentaLog('Track enabled: ${event.track?.enabled}');
       _magentaLog('Streams count: ${event.streams.length}');
 
       if (event.streams.isNotEmpty) {
         final stream = event.streams[0];
         _magentaLog('Stream ID: ${stream.id}');
-        _magentaLog(
-            'Stream tracks: ${stream.getTracks().map((t) => '${t.kind}:${t.id}').join(', ')}');
 
-        // Set remote stream immediately
-        _remoteStream = stream;
-        _remoteStreamController.add(_remoteStream!);
-        _magentaLog('✅ Remote stream set successfully');
+        // Handle different track types
+        if (event.track?.kind == 'video') {
+          _magentaLog('📹 Video track received');
+          // Update remote stream immediately for video
+          _remoteStream = stream;
+          _remoteStreamController.add(_remoteStream!);
+        } else if (event.track?.kind == 'audio') {
+          _magentaLog('🎤 Audio track received');
+          // Update remote stream for audio
+          _remoteStream = stream;
+          _remoteStreamController.add(_remoteStream!);
+        }
 
-        // Force update the UI
         _logStreamStatus();
-      } else {
-        _magentaLog('⚠️ No streams in onTrack event');
       }
     };
 
@@ -356,12 +468,15 @@ class WebRTCService {
       switch (state) {
         case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
           _magentaLog('✅ WebRTC Connected');
-          _callStateController.add(CallState.connected);
-          _logStreamStatus();
+          if (!_isVideoToggling) {
+            _callStateController.add(CallState.connected);
+          }
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
           _magentaLog('❌ WebRTC Disconnected');
-          _callStateController.add(CallState.failed);
+          if (!_isVideoToggling) {
+            _callStateController.add(CallState.failed);
+          }
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
           _magentaLog('❌ WebRTC Failed');
@@ -369,7 +484,9 @@ class WebRTCService {
           break;
         case RTCPeerConnectionState.RTCPeerConnectionStateClosed:
           _magentaLog('🔒 WebRTC Closed');
-          _callStateController.add(CallState.ended);
+          if (!_isVideoToggling) {
+            _callStateController.add(CallState.ended);
+          }
           break;
         default:
           _magentaLog('🔄 WebRTC State: $state');
@@ -383,11 +500,12 @@ class WebRTCService {
         case RTCIceConnectionState.RTCIceConnectionStateConnected:
         case RTCIceConnectionState.RTCIceConnectionStateCompleted:
           _magentaLog('✅ ICE Connected/Completed');
-          _logStreamStatus();
           break;
         case RTCIceConnectionState.RTCIceConnectionStateFailed:
           _magentaLog('❌ ICE Failed');
-          _callStateController.add(CallState.failed);
+          if (!_isVideoToggling) {
+            _callStateController.add(CallState.failed);
+          }
           break;
         case RTCIceConnectionState.RTCIceConnectionStateDisconnected:
           _magentaLog('❌ ICE Disconnected');
@@ -409,10 +527,11 @@ class WebRTCService {
         'callId': _currentCallId,
       });
     };
-
-    _peerConnection!.onDataChannel = (RTCDataChannel channel) {
-      _magentaLog('📡 Data channel received: ${channel.label}');
-    };
+    // The following line is commented out because 'onNegotiationNeeded' is not defined for RTCPeerConnection in this package.
+    // _peerConnection!.onNegotiationNeeded = () {
+    //   _magentaLog('🤝 Negotiation needed - handling automatically');
+    //   // Handle renegotiation if needed
+    // };
   }
 
   void _logStreamStatus() {
@@ -420,21 +539,18 @@ class WebRTCService {
     _magentaLog('Local stream: ${_localStream != null ? 'Available' : 'NULL'}');
     _magentaLog(
         'Remote stream: ${_remoteStream != null ? 'Available' : 'NULL'}');
+    _magentaLog('Has video track: $_hasVideoTrack');
+    _magentaLog('Video enabled: $_isVideoEnabled');
+    _magentaLog('Audio enabled: $_isAudioEnabled');
 
     if (_localStream != null) {
       _magentaLog(
-          'Local tracks: ${_localStream!.getTracks().map((t) => '${t.kind}:${t.id}').join(', ')}');
+          'Local tracks: ${_localStream!.getTracks().map((t) => '${t.kind}:${t.enabled}').join(', ')}');
     }
 
     if (_remoteStream != null) {
       _magentaLog(
-          'Remote tracks: ${_remoteStream!.getTracks().map((t) => '${t.kind}:${t.id}').join(', ')}');
-    }
-
-    if (_peerConnection != null) {
-      _magentaLog('Peer connection state: ${_peerConnection!.connectionState}');
-      _magentaLog(
-          'ICE connection state: ${_peerConnection!.iceConnectionState}');
+          'Remote tracks: ${_remoteStream!.getTracks().map((t) => '${t.kind}:${t.enabled}').join(', ')}');
     }
   }
 
@@ -445,6 +561,8 @@ class WebRTCService {
           'echoCancellation': true,
           'noiseSuppression': true,
           'autoGainControl': true,
+          'sampleRate': 44100,
+          'channelCount': 1,
         },
         'video': isVideo
             ? {
@@ -469,18 +587,20 @@ class WebRTCService {
 
         // Add tracks to peer connection
         if (_peerConnection != null) {
-          // Only clear senders if negotiation is needed (e.g., for offerer)
-          // For callee, adding tracks before remote description is fine
+          // Clear existing senders
           final senders = await _peerConnection!.getSenders();
           for (final sender in senders) {
             await _peerConnection!.removeTrack(sender);
           }
 
+          // Add new tracks
           for (final track in _localStream!.getTracks()) {
             await _peerConnection!.addTrack(track, _localStream!);
             _magentaLog('✅ Track added: ${track.kind}:${track.id}');
           }
         }
+
+        _hasVideoTrack = isVideo;
       } else {
         throw Exception('Failed to get local stream');
       }
@@ -506,13 +626,14 @@ class WebRTCService {
         'type': 'offer',
         'offer': offer.toMap(),
         'callId': _currentCallId,
-        'callerId':
-            _signalRService?.currentUserId?.toString(), // <-- Added callerId
+        'callerId': _signalRService?.currentUserId?.toString(),
         'isVideo': _isVideoCall,
-        'isMatchBased': true, // Mark as match-based call
+        'isMatchBased': true,
       });
 
       _magentaLog('✅ Offer created and sent');
+
+      // Timeout for answer
       Timer(const Duration(seconds: 30), () async {
         if (_peerConnection != null) {
           final remoteDesc = await _peerConnection!.getRemoteDescription();
@@ -640,12 +761,16 @@ class WebRTCService {
 
       _magentaLog(
           'Received WebRTC signal: type=$type, from=$callerId, callId=$callId');
+
       switch (type) {
         case 'offer':
           await _handleOffer(signal);
           break;
         case 'answer':
           await _handleAnswer(signal);
+          break;
+        case 'renegotiate':
+          await _handleRenegotiate(signal);
           break;
         case 'ice-candidate':
           await _handleIceCandidate(signal);
@@ -663,6 +788,44 @@ class WebRTCService {
       _magentaLog(
           '❌ Error parsing SignalR signal: $e\nStackTrace: $stackTrace');
       _callStateController.add(CallState.failed);
+    }
+  }
+
+  Future<void> _handleRenegotiate(Map<String, dynamic> signal) async {
+    try {
+      _magentaLog('🔄 Handling renegotiation request');
+
+      if (!signal.containsKey('offer')) {
+        _magentaLog('❌ Renegotiate signal missing offer');
+        return;
+      }
+
+      final offer = signal['offer'];
+      final rtcOffer = RTCSessionDescription(offer['sdp'], offer['type']);
+
+      if (_peerConnection == null) {
+        _magentaLog('❌ Cannot handle renegotiation: peer connection is null');
+        return;
+      }
+
+      // Set remote description
+      await _peerConnection!.setRemoteDescription(rtcOffer);
+      _magentaLog('✅ Renegotiation remote description set');
+
+      // Create answer
+      final answer = await _peerConnection!.createAnswer();
+      await _peerConnection!.setLocalDescription(answer);
+
+      // Send answer
+      await _sendWebRtcSignal(_currentCallUserId!, {
+        'type': 'renegotiate-answer',
+        'answer': answer.toMap(),
+        'callId': _currentCallId,
+      });
+
+      _magentaLog('✅ Renegotiation answer sent');
+    } catch (e) {
+      _magentaLog('❌ Error handling renegotiation: $e');
     }
   }
 

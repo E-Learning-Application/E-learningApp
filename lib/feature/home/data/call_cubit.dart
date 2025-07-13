@@ -26,6 +26,8 @@ class CallConnected extends CallCubitState {
   final bool isSpeakerOn;
   final MediaStream? localStream;
   final MediaStream? remoteStream;
+  final bool isVideoToggling;
+  final bool isAudioToggling; // Add this for smooth audio transitions
 
   CallConnected({
     required this.matchType,
@@ -36,6 +38,8 @@ class CallConnected extends CallCubitState {
     this.isSpeakerOn = false,
     this.localStream,
     this.remoteStream,
+    this.isVideoToggling = false,
+    this.isAudioToggling = false,
   });
 
   CallConnected copyWith({
@@ -47,6 +51,8 @@ class CallConnected extends CallCubitState {
     bool? isSpeakerOn,
     MediaStream? localStream,
     MediaStream? remoteStream,
+    bool? isVideoToggling,
+    bool? isAudioToggling,
   }) {
     return CallConnected(
       matchType: matchType ?? this.matchType,
@@ -57,6 +63,8 @@ class CallConnected extends CallCubitState {
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
       localStream: localStream ?? this.localStream,
       remoteStream: remoteStream ?? this.remoteStream,
+      isVideoToggling: isVideoToggling ?? this.isVideoToggling,
+      isAudioToggling: isAudioToggling ?? this.isAudioToggling,
     );
   }
 }
@@ -98,6 +106,8 @@ class CallCubit extends Cubit<CallCubitState> {
 
   MediaStream? _localStream;
   MediaStream? _remoteStream;
+  bool _isVideoToggling = false;
+  bool _isAudioToggling = false;
 
   CallCubit({
     required WebRTCService webRTCService,
@@ -124,6 +134,14 @@ class CallCubit extends Cubit<CallCubitState> {
     _callStateSubscription =
         _webRTCService.onCallStateChanged.listen((callState) {
       log('📞 CallCubit received call state: $callState');
+
+      // Don't emit ended state if we're just toggling video or audio
+      if (callState == CallState.ended &&
+          (_isVideoToggling || _isAudioToggling)) {
+        log('🔄 Ignoring call ended during toggle operation');
+        return;
+      }
+
       _handleCallStateChange(callState);
     });
 
@@ -169,7 +187,9 @@ class CallCubit extends Cubit<CallCubitState> {
 
     switch (callState) {
       case CallState.connecting:
-        if (state is! CallConnecting) {
+        if (state is! CallConnecting &&
+            !_isVideoToggling &&
+            !_isAudioToggling) {
           emit(CallConnecting(
             matchType: _webRTCService.isVideoCall ? 'video' : 'voice',
             targetUserId: _webRTCService.currentCallUserId ?? '',
@@ -182,7 +202,6 @@ class CallCubit extends Cubit<CallCubitState> {
         final targetUserId = _webRTCService.currentCallUserId ?? '';
         final isVideo = _webRTCService.isVideoCall;
 
-        // Only emit connected state if we have a valid target user ID
         if (targetUserId.isEmpty) {
           log('⚠️ Cannot emit connected state: no target user ID');
           return;
@@ -199,6 +218,8 @@ class CallCubit extends Cubit<CallCubitState> {
             isVideoOff: !_webRTCService.isVideoEnabled,
             localStream: _localStream,
             remoteStream: _remoteStream,
+            isVideoToggling: false,
+            isAudioToggling: false,
           ));
           log('✅ Updated CallConnected state');
         } else {
@@ -211,9 +232,15 @@ class CallCubit extends Cubit<CallCubitState> {
             isVideoOff: !_webRTCService.isVideoEnabled,
             localStream: _localStream,
             remoteStream: _remoteStream,
+            isVideoToggling: false,
+            isAudioToggling: false,
           ));
           log('✅ Emitted new CallConnected state');
         }
+
+        // Reset toggle flags after successful connection
+        _isVideoToggling = false;
+        _isAudioToggling = false;
         break;
 
       case CallState.ended:
@@ -307,73 +334,165 @@ class CallCubit extends Cubit<CallCubitState> {
     emit(CallInitial());
   }
 
+  // FIXED: Smooth mute toggle without state emission
   Future<void> toggleMute() async {
     try {
-      log('🔇 Toggling mute, current state: ${state.runtimeType}');
+      if (state is! CallConnected) {
+        log('⚠️ Cannot toggle mute: not in connected state');
+        return;
+      }
+
+      final currentState = state as CallConnected;
+
+      // Set audio toggling flag first
+      _isAudioToggling = true;
+
+      // Show immediate UI feedback
+      emit(currentState.copyWith(
+        isAudioToggling: true,
+        isMuted: !currentState.isMuted, // Immediate UI update
+      ));
+
+      log('🔇 Toggling mute, current muted: ${currentState.isMuted}');
+
+      // Perform the actual audio toggle
       await _webRTCService.toggleAudio();
 
+      // Update state with final result
+      emit(currentState.copyWith(
+        isMuted: !_webRTCService.isAudioEnabled,
+        isAudioToggling: false,
+      ));
+
+      _isAudioToggling = false;
+      log('🔇 Audio toggled successfully: muted = ${!_webRTCService.isAudioEnabled}');
+    } catch (e) {
+      _isAudioToggling = false;
+      log('❌ Failed to toggle audio: $e');
+
+      // Revert UI state on error
       if (state is CallConnected) {
         final currentState = state as CallConnected;
         emit(currentState.copyWith(
-          isMuted: !_webRTCService.isAudioEnabled,
+          isMuted: _webRTCService.isAudioEnabled,
+          isAudioToggling: false,
         ));
-        log('🔇 Audio toggled: muted = ${!_webRTCService.isAudioEnabled}');
       }
-    } catch (e) {
-      log('❌ Failed to toggle audio: $e');
     }
   }
 
-  Future<void> toggleVideoModeWithRenegotiation() async {
-    try {
-      final currentUserId = _webRTCService.currentCallUserId;
-      if (currentUserId == null) {
-        log('❌ No current call user ID for toggling video mode');
-        emit(CallFailed(error: 'No current call user ID'));
-        return;
-      }
-      final wasVideo = _webRTCService.isVideoCall;
-      log('🔄 Renegotiating call: switching from ${wasVideo ? 'video' : 'voice'} to ${!wasVideo ? 'video' : 'voice'}');
-      await endCall();
-      // Small delay to ensure cleanup
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (wasVideo) {
-        await startVoiceCall(currentUserId);
-      } else {
-        await startVideoCall(currentUserId);
-      }
-      log('✅ Renegotiation complete');
-    } catch (e) {
-      log('❌ Failed to toggle video mode with renegotiation: $e');
-      emit(CallFailed(error: 'Failed to toggle video mode: $e'));
-    }
-  }
-
-  @Deprecated('Use toggleVideoModeWithRenegotiation for mode switching')
+  // FIXED: Smooth video toggle without renegotiation
   Future<void> toggleVideo() async {
     try {
-      log('📹 Toggling video (deprecated)');
+      if (state is! CallConnected) {
+        log('⚠️ Cannot toggle video: not in connected state');
+        return;
+      }
+
+      final currentState = state as CallConnected;
+
+      // Set video toggling flag first
+      _isVideoToggling = true;
+
+      // Show immediate UI feedback
+      emit(currentState.copyWith(
+        isVideoToggling: true,
+        isVideoOff: !currentState.isVideoOff, // Immediate UI update
+      ));
+
+      log('📹 Toggling video, current video off: ${currentState.isVideoOff}');
+
+      // Perform the actual video toggle
       await _webRTCService.toggleVideo();
 
+      // Update state with final result
+      emit(currentState.copyWith(
+        isVideoOff: !_webRTCService.isVideoEnabled,
+        isVideoToggling: false,
+      ));
+
+      _isVideoToggling = false;
+      log('📹 Video toggled successfully: off = ${!_webRTCService.isVideoEnabled}');
+    } catch (e) {
+      _isVideoToggling = false;
+      log('❌ Failed to toggle video: $e');
+
+      // Revert UI state on error
       if (state is CallConnected) {
         final currentState = state as CallConnected;
         emit(currentState.copyWith(
           isVideoOff: !_webRTCService.isVideoEnabled,
+          isVideoToggling: false,
         ));
-        log('📹 Video toggled: off = ${!_webRTCService.isVideoEnabled}');
       }
-    } catch (e) {
-      log('❌ Failed to toggle video: $e');
     }
   }
 
-  Future<void> toggleSpeaker() async {
-    if (state is CallConnected) {
+  // IMPROVED: Better video mode switching
+  Future<void> switchVideoMode() async {
+    try {
+      if (state is! CallConnected) {
+        log('⚠️ Cannot switch video mode: not in connected state');
+        return;
+      }
+
       final currentState = state as CallConnected;
+      final currentUserId = _webRTCService.currentCallUserId;
+
+      if (currentUserId == null) {
+        log('❌ No current call user ID for switching video mode');
+        return;
+      }
+
+      _isVideoToggling = true;
+
+      // Show switching state
+      emit(currentState.copyWith(isVideoToggling: true));
+
+      log('🔄 Switching video mode from ${currentState.isVideo ? 'video' : 'voice'} to ${!currentState.isVideo ? 'video' : 'voice'}');
+
+      // End current call quietly
+      await _webRTCService.endCall();
+
+      // Small delay for cleanup
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Start new call with opposite mode
+      if (currentState.isVideo) {
+        await _webRTCService.startAudioCall(currentUserId);
+      } else {
+        await _webRTCService.startVideoCall(currentUserId);
+      }
+
+      log('✅ Video mode switch completed');
+    } catch (e) {
+      _isVideoToggling = false;
+      log('❌ Failed to switch video mode: $e');
+      emit(CallFailed(error: 'Failed to switch video mode: $e'));
+    }
+  }
+
+  // FIXED: Smooth speaker toggle
+  Future<void> toggleSpeaker() async {
+    try {
+      if (state is! CallConnected) {
+        log('⚠️ Cannot toggle speaker: not in connected state');
+        return;
+      }
+
+      final currentState = state as CallConnected;
+
+      // Immediate UI update
       emit(currentState.copyWith(
         isSpeakerOn: !currentState.isSpeakerOn,
       ));
-      log('🔊 Speaker toggled: ${!currentState.isSpeakerOn}');
+
+      log('🔊 Speaker toggled to: ${!currentState.isSpeakerOn}');
+
+      // Here you would call the actual speaker toggle method if available
+      // await _webRTCService.toggleSpeaker();
+    } catch (e) {
+      log('❌ Failed to toggle speaker: $e');
     }
   }
 
@@ -386,6 +505,7 @@ class CallCubit extends Cubit<CallCubitState> {
     }
   }
 
+  // Getters
   MediaStream? get localStream => _localStream ?? _webRTCService.localStream;
   MediaStream? get remoteStream => _remoteStream ?? _webRTCService.remoteStream;
   bool get isInCall => _webRTCService.isInCall;
@@ -393,8 +513,10 @@ class CallCubit extends Cubit<CallCubitState> {
   bool get isVideoEnabled => _webRTCService.isVideoEnabled;
   bool get isAudioEnabled => _webRTCService.isAudioEnabled;
   String? get currentCallUserId => _webRTCService.currentCallUserId;
+  bool get isVideoToggling => _isVideoToggling;
+  bool get isAudioToggling => _isAudioToggling;
 
-  // Additional utility methods
+  // Utility methods
   bool get hasLocalStream => localStream != null;
   bool get hasRemoteStream => remoteStream != null;
   bool get isCallActive => state is CallConnected;
@@ -402,13 +524,22 @@ class CallCubit extends Cubit<CallCubitState> {
       state is CallConnecting || state is CallConnected;
 
   String get callStatusText {
+    if (state is CallConnected) {
+      final connectedState = state as CallConnected;
+      if (connectedState.isVideoToggling) {
+        return 'Switching video...';
+      }
+      if (connectedState.isAudioToggling) {
+        return 'Switching audio...';
+      }
+      return 'Connected';
+    }
+
     switch (state.runtimeType) {
       case CallInitial:
         return 'Ready';
       case CallConnecting:
         return 'Connecting...';
-      case CallConnected:
-        return 'Connected';
       case CallEnded:
         return 'Call Ended';
       case CallFailed:
