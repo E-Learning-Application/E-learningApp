@@ -21,76 +21,29 @@ class UnifiedCallPage extends StatefulWidget {
   _UnifiedCallPageState createState() => _UnifiedCallPageState();
 }
 
-class _UnifiedCallPageState extends State<UnifiedCallPage>
-    with TickerProviderStateMixin {
+class _UnifiedCallPageState extends State<UnifiedCallPage> {
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
-
-  // Animation controllers for smooth transitions
-  late AnimationController _fadeController;
-  late AnimationController _scaleController;
-  late AnimationController _buttonController;
-
-  // UI state (independent of Cubit state)
   bool _isInitialized = false;
   String _callDuration = '00:00';
   Timer? _durationTimer;
   DateTime? _callStartTime;
-  bool _hasPopped = false;
-
-  // Local UI state for smooth interactions
-  bool _localVideoEnabled = true;
-  bool _localAudioEnabled = true;
-  bool _speakerEnabled = false;
-  bool _showVideoUI = false;
-
-  // Smooth transition states
-  bool _isVideoToggling = false;
-  bool _isAudioToggling = false;
-  bool _isSpeakerToggling = false;
-
-  // Stream states
+  bool _isVideoMode = false;
   bool _hasLocalStream = false;
   bool _hasRemoteStream = false;
-
-  // Prevent multiple operations
-  bool _isOperationInProgress = false;
+  bool _hasPopped = false;
+  bool _showVideoUI = false; // Controls UI layout
+  bool _localVideoEnabled = true; // Local video state
+  bool _remoteVideoEnabled = true; // Remote video state
+  bool _isRenegotiating = false; // Add this flag
 
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
-    _initializeCallState();
-    _initializeRenderers();
-    _startCallTimer();
-  }
-
-  void _initializeAnimations() {
-    _fadeController = AnimationController(
-      duration: Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _scaleController = AnimationController(
-      duration: Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    _buttonController = AnimationController(
-      duration: Duration(milliseconds: 150),
-      vsync: this,
-    );
-
-    _fadeController.forward();
-    _scaleController.forward();
-    _buttonController.forward();
-  }
-
-  void _initializeCallState() {
+    _isVideoMode = widget.isVideoCall;
     _showVideoUI = widget.isVideoCall;
-    _localVideoEnabled = widget.isVideoCall;
-    _localAudioEnabled = true;
-    _speakerEnabled = false;
+    _startCallTimer();
+    _initializeRenderers();
   }
 
   Future<void> _initializeRenderers() async {
@@ -98,16 +51,13 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
       await _localRenderer.initialize();
       await _remoteRenderer.initialize();
 
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
+      setState(() {
+        _isInitialized = true;
+      });
 
-        // Update streams after initialization
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _updateVideoStreams();
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _updateVideoStreams();
+      });
     } catch (e) {
       print('Error initializing renderers: $e');
     }
@@ -116,9 +66,6 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   @override
   void dispose() {
     _durationTimer?.cancel();
-    _fadeController.dispose();
-    _scaleController.dispose();
-    _buttonController.dispose();
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     super.dispose();
@@ -127,7 +74,7 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   void _startCallTimer() {
     _callStartTime = DateTime.now();
     _durationTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      if (_callStartTime != null && mounted) {
+      if (_callStartTime != null) {
         final duration = DateTime.now().difference(_callStartTime!);
         final minutes = duration.inMinutes.toString().padLeft(2, '0');
         final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
@@ -139,7 +86,8 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   }
 
   void _showCallFeedbackDialog() {
-    if (!mounted) return;
+    // Don't show feedback during renegotiation
+    if (_isRenegotiating) return;
 
     showDialog(
       context: context,
@@ -152,185 +100,49 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
     );
   }
 
-  // Smooth video toggle without rebuilding the entire page
   Future<void> _toggleVideoMode() async {
-    if (_isOperationInProgress) return;
+    print('Video toggle called - current mode: $_isVideoMode');
+    final callCubit = context.read<CallCubit>();
+    final currentState = callCubit.state;
 
-    setState(() {
-      _isVideoToggling = true;
-      _isOperationInProgress = true;
-    });
-
-    try {
-      // Animate button press
-      await _buttonController.reverse();
-      _buttonController.forward();
-
-      final callCubit = context.read<CallCubit>();
-
-      if (_localVideoEnabled) {
-        // Turn off video
+    if (currentState is CallConnected || currentState is CallConnecting) {
+      if (_isVideoMode) {
+        // Currently in video mode, turning off video (but staying in video call)
         await callCubit.toggleVideo();
-
-        // Update local state immediately for smooth UI
         setState(() {
           _localVideoEnabled = false;
-          // Only hide video UI if both local and remote video are off
-          if (!_hasRemoteStream) {
-            _showVideoUI = false;
+          if (!_remoteVideoEnabled) {
+            _showVideoUI = false; // Switch to voice UI if both videos are off
           }
         });
       } else {
-        // Turn on video
-        await callCubit.toggleVideo();
-
-        // Update local state immediately for smooth UI
+        // Currently in voice mode, need to switch to video call
+        // Set renegotiation flag to prevent feedback dialog
         setState(() {
-          _localVideoEnabled = true;
-          _showVideoUI = true;
+          _isRenegotiating = true;
         });
-      }
 
-      print('Video mode toggled to: $_localVideoEnabled');
-    } catch (e) {
-      print('Error toggling video: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isVideoToggling = false;
-          _isOperationInProgress = false;
-        });
-      }
-    }
-  }
-
-  // Smooth audio toggle
-  Future<void> _toggleAudio() async {
-    if (_isOperationInProgress) return;
-
-    setState(() {
-      _isAudioToggling = true;
-      _isOperationInProgress = true;
-    });
-
-    try {
-      // Animate button press
-      await _buttonController.reverse();
-      _buttonController.forward();
-
-      // Update UI immediately
-      setState(() {
-        _localAudioEnabled = !_localAudioEnabled;
-      });
-
-      // Call the cubit method
-      await context.read<CallCubit>().toggleMute();
-
-      print('Audio toggled to: $_localAudioEnabled');
-    } catch (e) {
-      print('Error toggling audio: $e');
-      // Revert on error
-      setState(() {
-        _localAudioEnabled = !_localAudioEnabled;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAudioToggling = false;
-          _isOperationInProgress = false;
-        });
-      }
-    }
-  }
-
-  // Smooth speaker toggle
-  Future<void> _toggleSpeaker() async {
-    if (_isOperationInProgress) return;
-
-    setState(() {
-      _isSpeakerToggling = true;
-      _isOperationInProgress = true;
-    });
-
-    try {
-      // Animate button press
-      await _buttonController.reverse();
-      _buttonController.forward();
-
-      // Update UI immediately
-      setState(() {
-        _speakerEnabled = !_speakerEnabled;
-      });
-
-      // Call the cubit method
-      await context.read<CallCubit>().toggleSpeaker();
-
-      print('Speaker toggled to: $_speakerEnabled');
-    } catch (e) {
-      print('Error toggling speaker: $e');
-      // Revert on error
-      setState(() {
-        _speakerEnabled = !_speakerEnabled;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSpeakerToggling = false;
-          _isOperationInProgress = false;
-        });
-      }
-    }
-  }
-
-  void _updateVideoStreams() {
-    if (!_isInitialized || !mounted) return;
-
-    final callCubit = context.read<CallCubit>();
-
-    // Update local stream
-    if (callCubit.localStream != null) {
-      if (_localRenderer.srcObject != callCubit.localStream) {
-        _localRenderer.srcObject = callCubit.localStream;
-        if (mounted) {
+        try {
+          await callCubit.toggleVideoModeWithRenegotiation();
           setState(() {
-            _hasLocalStream = true;
+            _localVideoEnabled = true;
+            _showVideoUI = true; // Switch to video UI
+          });
+        } finally {
+          // Reset renegotiation flag after completion
+          setState(() {
+            _isRenegotiating = false;
           });
         }
       }
+
+      setState(() {
+        _isVideoMode = !_isVideoMode;
+      });
+
+      print('Video mode toggled to: $_isVideoMode');
     } else {
-      if (_hasLocalStream) {
-        _localRenderer.srcObject = null;
-        if (mounted) {
-          setState(() {
-            _hasLocalStream = false;
-          });
-        }
-      }
-    }
-
-    // Update remote stream
-    if (callCubit.remoteStream != null) {
-      if (_remoteRenderer.srcObject != callCubit.remoteStream) {
-        _remoteRenderer.srcObject = callCubit.remoteStream;
-        if (mounted) {
-          setState(() {
-            _hasRemoteStream = true;
-            // Show video UI if remote stream is available
-            if (!_showVideoUI) {
-              _showVideoUI = true;
-            }
-          });
-        }
-      }
-    } else {
-      if (_hasRemoteStream) {
-        _remoteRenderer.srcObject = null;
-        if (mounted) {
-          setState(() {
-            _hasRemoteStream = false;
-          });
-        }
-      }
+      print('Cannot toggle video, invalid state: ${currentState.runtimeType}');
     }
   }
 
@@ -340,104 +152,122 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
       value: context.read<CallCubit>(),
       child: BlocListener<CallCubit, CallCubitState>(
         listener: (context, state) {
-          // Handle call end states
           if ((state is CallEnded || state is CallFailed) && !_hasPopped) {
             _hasPopped = true;
 
-            if (state is CallEnded && mounted) {
-              // Small delay to ensure smooth transition
-              Future.delayed(Duration(milliseconds: 300), () {
-                if (mounted) {
-                  _showCallFeedbackDialog();
-                }
-              });
-            } else if (state is CallFailed && mounted) {
+            // Only show feedback dialog if it's a real call end, not renegotiation
+            if (state is CallEnded && mounted && !_isRenegotiating) {
+              _showCallFeedbackDialog();
+            } else if (!_isRenegotiating) {
+              // Only pop if not renegotiating
+              if (mounted && Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            }
+
+            if (state is CallFailed && !_isRenegotiating) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(state.error),
                   backgroundColor: Colors.red,
                 ),
               );
-
-              Future.delayed(Duration(milliseconds: 300), () {
-                if (mounted && Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                }
-              });
             }
-          }
-
-          // Sync with cubit state when needed (without rebuilding)
-          if (state is CallConnected && mounted) {
+          } else if (state is CallConnected) {
+            // Reset _hasPopped when reconnected (after renegotiation)
+            setState(() {
+              _hasPopped = false;
+              _isVideoMode = state.isVideo && !state.isVideoOff;
+              _localVideoEnabled = state.isVideo && !state.isVideoOff;
+              // Update UI based on video availability
+              _showVideoUI = _localVideoEnabled || _remoteVideoEnabled;
+            });
             _updateVideoStreams();
-
-            // Only update if there's a significant change
-            if (_localAudioEnabled != !state.isMuted) {
-              setState(() {
-                _localAudioEnabled = !state.isMuted;
-              });
-            }
-
-            if (_speakerEnabled != state.isSpeakerOn) {
-              setState(() {
-                _speakerEnabled = state.isSpeakerOn;
-              });
-            }
+          } else if (state is CallConnecting) {
+            // Reset _hasPopped when connecting (during renegotiation)
+            setState(() {
+              _hasPopped = false;
+            });
+            _updateVideoStreams();
           }
         },
         child: BlocBuilder<CallCubit, CallCubitState>(
-          buildWhen: (previous, current) {
-            // Only rebuild for significant state changes
-            if (current is CallConnecting && previous is CallInitial)
-              return true;
-            if (current is CallConnected && previous is CallConnecting)
-              return true;
-            if (current is CallEnded || current is CallFailed) return true;
-            return false;
-          },
           builder: (context, state) {
-            return AnimatedBuilder(
-              animation: _fadeController,
-              builder: (context, child) {
-                return FadeTransition(
-                  opacity: _fadeController,
-                  child: Scaffold(
-                    backgroundColor: _showVideoUI ? Colors.black : Colors.white,
-                    body: SafeArea(
-                      child: Column(
-                        children: [
-                          // Status Bar (only for video UI)
-                          if (_showVideoUI) _buildStatusBar(),
+            return Scaffold(
+              backgroundColor: _showVideoUI ? Colors.black : Colors.white,
+              body: SafeArea(
+                child: Column(
+                  children: [
+                    // Status Bar (only for video UI)
+                    if (_showVideoUI) _buildStatusBar(),
 
-                          // Header
-                          _buildHeader(state),
+                    // Header
+                    _buildHeader(state),
 
-                          // Main Content Area
-                          Expanded(
-                            child: AnimatedSwitcher(
-                              duration: Duration(milliseconds: 300),
-                              child: _showVideoUI
-                                  ? _buildVideoContent(state)
-                                  : _buildVoiceContent(state),
-                            ),
-                          ),
-
-                          // Control Buttons
-                          _buildControlButtons(state),
-
-                          // Bottom Action Buttons
-                          _buildBottomButtons(),
-                        ],
-                      ),
+                    // Main Content Area
+                    Expanded(
+                      child: _showVideoUI
+                          ? _buildVideoContent(state)
+                          : _buildVoiceContent(state),
                     ),
-                  ),
-                );
-              },
+
+                    // Control Buttons
+                    _buildControlButtons(state),
+
+                    // Bottom Action Buttons
+                    _buildBottomButtons(),
+                  ],
+                ),
+              ),
             );
           },
         ),
       ),
     );
+  }
+
+  void _updateVideoStreams() {
+    if (!_isInitialized) return;
+
+    final callCubit = context.read<CallCubit>();
+
+    print('[DEBUG] Updating video streams...');
+    print('[DEBUG] Local stream: ${callCubit.localStream}');
+    print('[DEBUG] Remote stream: ${callCubit.remoteStream}');
+
+    if (callCubit.localStream != null) {
+      if (_localRenderer.srcObject != callCubit.localStream) {
+        _localRenderer.srcObject = callCubit.localStream;
+        print('Local stream updated');
+        setState(() {
+          _hasLocalStream = true;
+        });
+      }
+    } else {
+      if (_hasLocalStream) {
+        _localRenderer.srcObject = null;
+        setState(() {
+          _hasLocalStream = false;
+        });
+      }
+    }
+
+    if (callCubit.remoteStream != null) {
+      if (_remoteRenderer.srcObject != callCubit.remoteStream) {
+        _remoteRenderer.srcObject = callCubit.remoteStream;
+        print('Remote stream updated');
+        setState(() {
+          _hasRemoteStream = true;
+        });
+      }
+    } else {
+      if (_hasRemoteStream) {
+        _remoteRenderer.srcObject = null;
+        setState(() {
+          _hasRemoteStream = false;
+        });
+      }
+    }
   }
 
   Widget _buildStatusBar() {
@@ -470,25 +300,21 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   }
 
   Widget _buildHeader(CallCubitState state) {
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 300),
+    return Container(
       padding: EdgeInsets.all(16),
       color: _showVideoUI ? Colors.black87 : Colors.transparent,
       child: Row(
         children: [
-          Hero(
-            tag: 'user_avatar',
-            child: CircleAvatar(
-              radius: 20,
-              backgroundColor: Colors.orange,
-              child: Text(
-                widget.targetUserName.isNotEmpty
-                    ? widget.targetUserName[0].toUpperCase()
-                    : 'U',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: Colors.orange,
+            child: Text(
+              widget.targetUserName.isNotEmpty
+                  ? widget.targetUserName[0].toUpperCase()
+                  : 'U',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
@@ -505,15 +331,12 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
                     color: _showVideoUI ? Colors.white : Colors.black,
                   ),
                 ),
-                AnimatedDefaultTextStyle(
-                  duration: Duration(milliseconds: 200),
+                Text(
+                  state is CallConnected ? 'Connected' : 'Connecting...',
                   style: TextStyle(
                     fontSize: 12,
                     color:
                         state is CallConnected ? Colors.green : Colors.orange,
-                  ),
-                  child: Text(
-                    state is CallConnected ? 'Connected' : 'Connecting...',
                   ),
                 ),
               ],
@@ -533,85 +356,65 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   }
 
   Widget _buildVoiceContent(CallCubitState state) {
-    return AnimatedBuilder(
-      animation: _scaleController,
-      builder: (context, child) {
-        return ScaleTransition(
-          scale: _scaleController,
-          child: Container(
-            padding: EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(flex: 2),
+    return Container(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Spacer(flex: 2),
 
-                // Profile Avatar with pulse animation
-                AnimatedContainer(
-                  duration: Duration(milliseconds: 300),
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF4C2A1),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF4A90E2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _localAudioEnabled ? Icons.call : Icons.call_end,
-                        size: 40,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
+          // Profile Avatar
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4C2A1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4A90E2),
+                  shape: BoxShape.circle,
                 ),
-
-                const SizedBox(height: 30),
-
-                // Name
-                Text(
-                  widget.targetUserName,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
+                child: Icon(
+                  state is CallConnected ? Icons.call : Icons.call_end,
+                  size: 40,
+                  color: Colors.white,
                 ),
-
-                const SizedBox(height: 10),
-
-                // Call Status
-                AnimatedDefaultTextStyle(
-                  duration: Duration(milliseconds: 200),
-                  style: TextStyle(
-                    fontSize: 16,
-                    color:
-                        state is CallConnected ? Colors.green : Colors.orange,
-                    fontWeight: FontWeight.w400,
-                  ),
-                  child: Text(
-                    state is CallConnected ? 'Connected' : 'Connecting...',
-                  ),
-                ),
-
-                const Spacer(flex: 2),
-              ],
+              ),
             ),
           ),
-        );
-      },
+
+          const SizedBox(height: 30),
+
+          // Name
+          Text(
+            widget.targetUserName,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+              color: Colors.black,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // Call Status
+          Text(
+            state is CallConnected ? 'Connected' : 'Connecting...',
+            style: TextStyle(
+              fontSize: 16,
+              color: state is CallConnected ? Colors.green : Colors.orange,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+
+          const Spacer(flex: 2),
+        ],
+      ),
     );
   }
 
@@ -620,80 +423,51 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
       color: Colors.black,
       child: Stack(
         children: [
-          // Main Video Area
-          AnimatedSwitcher(
-            duration: Duration(milliseconds: 300),
-            child: Container(
-              key: ValueKey(_hasRemoteStream),
-              width: double.infinity,
-              height: double.infinity,
-              child: _buildMainVideoView(state),
-            ),
+          // Main Video Area - Remote or Local
+          Container(
+            width: double.infinity,
+            height: double.infinity,
+            child: _buildMainVideoView(state),
           ),
 
-          // Picture-in-Picture with smooth transitions
-          AnimatedPositioned(
-            duration: Duration(milliseconds: 300),
-            top: 80,
-            right: _localVideoEnabled && _hasLocalStream ? 16 : -140,
-            child: AnimatedOpacity(
-              duration: Duration(milliseconds: 200),
-              opacity: _localVideoEnabled && _hasLocalStream ? 1.0 : 0.0,
+          // Picture-in-Picture (PiP) for local video
+          if (_localVideoEnabled && _hasLocalStream)
+            Positioned(
+              top: 80,
+              right: 16,
               child: Container(
                 width: 120,
                 height: 160,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white24, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: _hasLocalStream
-                      ? RTCVideoView(
-                          _localRenderer,
-                          objectFit:
-                              RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                        )
-                      : Container(color: Colors.grey[800]),
+                  child: RTCVideoView(
+                    _localRenderer,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  ),
                 ),
               ),
             ),
-          ),
 
           // Camera Switch Button
           Positioned(
             top: 80,
             left: 16,
-            child: AnimatedScale(
-              scale: _localVideoEnabled ? 1.0 : 0.0,
-              duration: Duration(milliseconds: 200),
-              child: GestureDetector(
-                onTap: () => context.read<CallCubit>().switchCamera(),
-                child: Container(
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(25),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.flip_camera_ios,
-                    color: Colors.white,
-                    size: 24,
-                  ),
+            child: GestureDetector(
+              onTap: () => context.read<CallCubit>().switchCamera(),
+              child: Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: Icon(
+                  Icons.flip_camera_ios,
+                  color: Colors.white,
+                  size: 24,
                 ),
               ),
             ),
@@ -704,7 +478,8 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   }
 
   Widget _buildMainVideoView(CallCubitState state) {
-    if (_hasRemoteStream) {
+    // Show remote video if available, otherwise show local video or placeholder
+    if (_remoteVideoEnabled && _hasRemoteStream) {
       return RTCVideoView(
         _remoteRenderer,
         objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
@@ -721,20 +496,17 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Hero(
-                tag: 'user_avatar_large',
-                child: CircleAvatar(
-                  radius: 60,
-                  backgroundColor: Colors.orange,
-                  child: Text(
-                    widget.targetUserName.isNotEmpty
-                        ? widget.targetUserName[0].toUpperCase()
-                        : 'U',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                    ),
+              CircleAvatar(
+                radius: 60,
+                backgroundColor: Colors.orange,
+                child: Text(
+                  widget.targetUserName.isNotEmpty
+                      ? widget.targetUserName[0].toUpperCase()
+                      : 'U',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
@@ -763,8 +535,15 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   }
 
   Widget _buildControlButtons(CallCubitState state) {
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 300),
+    bool isAudioMuted = false;
+    bool isSpeakerOn = false;
+
+    if (state is CallConnected) {
+      isAudioMuted = state.isMuted;
+      isSpeakerOn = state.isSpeakerOn;
+    }
+
+    return Container(
       padding: EdgeInsets.all(20),
       color: _showVideoUI ? Colors.black87 : Colors.transparent,
       child: Row(
@@ -772,26 +551,38 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
         children: [
           // Audio/Mute Button
           _buildControlButton(
-            icon: _localAudioEnabled ? Icons.mic : Icons.mic_off,
-            isActive: _localAudioEnabled,
-            isLoading: _isAudioToggling,
-            onTap: _toggleAudio,
+            icon: isAudioMuted ? Icons.mic_off : Icons.mic,
+            isActive: !isAudioMuted,
+            onTap: () {
+              print('Mute button pressed!');
+              if (state is CallConnected || state is CallConnecting) {
+                context.read<CallCubit>().toggleMute();
+              }
+            },
           ),
 
           // Video Toggle Button
           _buildControlButton(
             icon: _localVideoEnabled ? Icons.videocam : Icons.videocam_off,
             isActive: _localVideoEnabled,
-            isLoading: _isVideoToggling,
-            onTap: _toggleVideoMode,
+            onTap: () {
+              print('Video toggle button pressed!');
+              if (state is CallConnected || state is CallConnecting) {
+                _toggleVideoMode();
+              }
+            },
           ),
 
           // Speaker Button
           _buildControlButton(
-            icon: _speakerEnabled ? Icons.volume_up : Icons.volume_down,
-            isActive: _speakerEnabled,
-            isLoading: _isSpeakerToggling,
-            onTap: _toggleSpeaker,
+            icon: isSpeakerOn ? Icons.volume_up : Icons.volume_down,
+            isActive: isSpeakerOn,
+            onTap: () {
+              print('Speaker button pressed!');
+              if (state is CallConnected || state is CallConnecting) {
+                context.read<CallCubit>().toggleSpeaker();
+              }
+            },
           ),
         ],
       ),
@@ -799,26 +590,17 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
   }
 
   Widget _buildBottomButtons() {
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 300),
+    return Container(
       padding: EdgeInsets.all(20),
       color: _showVideoUI ? Colors.black87 : Colors.transparent,
       child: Row(
         children: [
           Expanded(
-            child: AnimatedContainer(
-              duration: Duration(milliseconds: 200),
+            child: Container(
               height: 50,
               decoration: BoxDecoration(
                 color: Colors.red,
                 borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.red.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
-                  ),
-                ],
               ),
               child: TextButton(
                 onPressed: () {
@@ -855,58 +637,26 @@ class _UnifiedCallPageState extends State<UnifiedCallPage>
     required IconData icon,
     required VoidCallback onTap,
     bool isActive = true,
-    bool isLoading = false,
   }) {
-    return AnimatedBuilder(
-      animation: _buttonController,
-      builder: (context, child) {
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.95, end: 1.0).animate(
-            CurvedAnimation(parent: _buttonController, curve: Curves.easeInOut),
-          ),
-          child: GestureDetector(
-            onTap: isLoading ? null : onTap,
-            child: AnimatedContainer(
-              duration: Duration(milliseconds: 200),
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: isActive
-                    ? (_showVideoUI ? Colors.white24 : Colors.grey[200])
-                    : Colors.red.withOpacity(0.8),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: isLoading
-                  ? Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            _showVideoUI ? Colors.white : Colors.grey[600]!,
-                          ),
-                        ),
-                      ),
-                    )
-                  : Icon(
-                      icon,
-                      size: 28,
-                      color: isActive
-                          ? (_showVideoUI ? Colors.white : Colors.grey[600])
-                          : Colors.white,
-                    ),
-            ),
-          ),
-        );
-      },
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: isActive
+              ? (_showVideoUI ? Colors.white24 : Colors.grey[200])
+              : Colors.red.withOpacity(0.8),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          size: 28,
+          color: isActive
+              ? (_showVideoUI ? Colors.white : Colors.grey[600])
+              : Colors.white,
+        ),
+      ),
     );
   }
 }
