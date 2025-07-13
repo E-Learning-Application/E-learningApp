@@ -9,6 +9,7 @@ import 'package:e_learning_app/core/service/webrtc_service.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/feature/language/data/language_cubit.dart';
 import 'package:e_learning_app/feature/messages/data/message_cubit.dart';
+import 'package:e_learning_app/feature/messages/presentation/views/time_format.dart';
 import 'package:e_learning_app/feature/profile/data/user_cubit.dart';
 import 'package:e_learning_app/feature/settings/data/language_mangment_cubit.dart';
 import 'package:e_learning_app/feature/home/data/call_cubit.dart';
@@ -20,6 +21,8 @@ final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  TimeFormatter.initialize();
   runApp(const LanguageLearningApp());
 }
 

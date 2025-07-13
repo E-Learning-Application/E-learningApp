@@ -1,5 +1,6 @@
 import 'package:e_learning_app/feature/messages/data/message_cubit.dart';
 import 'package:e_learning_app/feature/messages/data/message_state.dart';
+import 'package:e_learning_app/feature/messages/presentation/views/time_format.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:e_learning_app/core/model/message_model.dart';
@@ -375,7 +376,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         ),
                         // Time
                         Text(
-                          _formatTime(chat.lastMessageTime),
+                          _formatMessageTime(chat.lastMessageTime),
                           style: TextStyle(
                             color: Colors.grey[400],
                             fontSize: 10,
@@ -460,19 +461,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
     );
   }
 
-  String _formatTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'now';
-    }
+  String _formatMessageTime(DateTime timestamp) {
+    return TimeFormatter.formatMessageTime(timestamp);
   }
 
   void _navigateToChat(ChatSummary chat) async {
