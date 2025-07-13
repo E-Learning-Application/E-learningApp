@@ -6,13 +6,13 @@ import 'package:e_learning_app/core/errors/exceptions.dart';
 
 class DioConsumer extends ApiConsumer {
   final Dio dio;
-  
+
   DioConsumer({required this.dio}) {
     dio.options.baseUrl = EndPoint.baseUrl;
     dio.options.connectTimeout = const Duration(seconds: 30);
     dio.options.receiveTimeout = const Duration(seconds: 30);
     dio.options.validateStatus = (status) {
-      return status != null && status < 500;
+      return status != null && status < 600;
     };
     dio.interceptors.add(ApiInterceptor());
     dio.interceptors.add(LogInterceptor(
@@ -128,7 +128,7 @@ class DioConsumer extends ApiConsumer {
       // Debug info
       print("POST DATA TYPE: ${data.runtimeType}");
       print("IS FROM DATA: $isFromData");
-      
+
       dynamic finalData;
       if (data is FormData) {
         finalData = data;

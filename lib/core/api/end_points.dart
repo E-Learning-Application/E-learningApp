@@ -51,6 +51,12 @@ class EndPoint {
   static const String getMessageById = '/api/messages'; // + messageId
   static const String markMessageAsRead = '/api/messages/read'; // + messageId
   static const String deleteMessage = '/api/messages'; // + messageId
+
+  // Feedback endpoints
+  static const String getAllFeedbacks = '/api/feedback/all';
+  static const String createFeedback = '/api/feedback';
+  static const String updateFeedback = '/api/feedback';
+  static const String deleteFeedback = '/api/feedback';
 }
 
 class ApiKey {

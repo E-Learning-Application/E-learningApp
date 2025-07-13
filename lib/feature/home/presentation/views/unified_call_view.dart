@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:e_learning_app/feature/home/data/call_cubit.dart';
+import 'package:e_learning_app/feature/feedback/presentation/widgets/call_feedback_dialog.dart';
 import 'dart:async';
 
 class UnifiedCallPage extends StatefulWidget {
@@ -79,6 +80,18 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
     });
   }
 
+  void _showCallFeedbackDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CallFeedbackDialog(
+        targetUserName: widget.targetUserName,
+        callDuration: _callDuration,
+        isVideoCall: widget.isVideoCall,
+      ),
+    );
+  }
+
   Future<void> _toggleVideoModeWithRenegotiation() async {
     print('Video toggle (renegotiation) called - current mode: $_isVideoMode');
     final callCubit = context.read<CallCubit>();
@@ -103,9 +116,15 @@ class _UnifiedCallPageState extends State<UnifiedCallPage> {
         listener: (context, state) {
           if ((state is CallEnded || state is CallFailed) && !_hasPopped) {
             _hasPopped = true;
-            if (mounted && Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
+
+            if (state is CallEnded && mounted) {
+              _showCallFeedbackDialog();
+            } else {
+              if (mounted && Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
             }
+
             if (state is CallFailed) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
