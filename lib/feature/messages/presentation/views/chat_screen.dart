@@ -893,37 +893,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _showSearchDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Search Messages'),
-          content: TextField(
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Search messages...',
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (query) {
-              if (query.isNotEmpty) {
-                final messageCubit = context.read<MessageCubit>();
-                messageCubit.searchMessages(query);
-              }
-              Navigator.pop(context);
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -932,41 +901,9 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(widget.match.matchedUser.username),
-            Text(
-              widget.match.matchType.toUpperCase(),
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              _showSearchDialog();
-            },
-          ),
-          if (widget.match.matchType == 'video')
-            IconButton(
-              icon: const Icon(Icons.videocam),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Video call feature coming soon!'),
-                  ),
-                );
-              },
-            ),
-          if (widget.match.matchType == 'voice')
-            IconButton(
-              icon: const Icon(Icons.call),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Voice call feature coming soon!'),
-                  ),
-                );
-              },
-            ),
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
@@ -981,13 +918,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Report feature coming soon!'),
-                    ),
-                  );
-                  break;
-                case 'block':
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Block feature coming soon!'),
                     ),
                   );
                   break;
@@ -1014,16 +944,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     Icon(Icons.report),
                     SizedBox(width: 8),
                     Text('Report User'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'block',
-                child: Row(
-                  children: [
-                    Icon(Icons.block),
-                    SizedBox(width: 8),
-                    Text('Block User'),
                   ],
                 ),
               ),

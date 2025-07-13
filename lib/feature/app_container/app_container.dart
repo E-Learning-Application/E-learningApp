@@ -20,7 +20,7 @@ class _AppContainerState extends State<AppContainer>
   int _currentIndex = 0;
   Timer? _tokenCheckTimer;
   bool _isCheckingToken = false;
-  bool _hasInitialized = false; // Add this flag
+  bool _hasInitialized = false;
 
   final List<Widget> _pages = [
     const HomeScreen(),

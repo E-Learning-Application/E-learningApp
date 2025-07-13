@@ -9,7 +9,7 @@ import 'package:e_learning_app/core/service/signalr_service.dart' as signalr;
 import 'package:e_learning_app/feature/messages/presentation/views/chat_screen.dart';
 import 'dart:async';
 import 'package:e_learning_app/core/model/user_dto.dart';
-import 'package:e_learning_app/feature/user_selection/presentation/user_selection_screen.dart';
+import 'package:e_learning_app/feature/messages/presentation/views/user_selection_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -502,6 +502,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         matchType: 'text', // Default to text chat
         createdAt: chat.lastMessageTime,
         isActive: true,
+        matchScore: 0.8,
       );
 
       if (mounted) {
@@ -601,6 +602,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
       matchType: 'text',
       createdAt: DateTime.now(),
       isActive: true,
+      matchScore: 0.5,
     );
 
     // Navigate to chat screen

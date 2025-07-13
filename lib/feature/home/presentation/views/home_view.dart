@@ -10,6 +10,7 @@ import 'package:e_learning_app/feature/language/presentation/view/language_view.
 import 'package:e_learning_app/feature/messages/presentation/views/chat_screen.dart';
 import 'package:e_learning_app/feature/home/presentation/views/unified_call_view.dart';
 import 'package:e_learning_app/feature/home/data/call_cubit.dart';
+import 'package:e_learning_app/feature/home/presentation/widgets/match_score_animation.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'dart:async';
@@ -421,7 +422,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Match Found!'),
+        title: const Center(
+          child: Text('Match Found!'),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -454,24 +457,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 fontSize: 14,
               ),
             ),
-            Text(
-              '(Backend always returns text, using your selection)',
-              style: TextStyle(
-                color: Colors.blue[600],
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
+            const SizedBox(height: 12),
+            Center(
+              child: MatchScoreAnimation(
+                score: match.matchScore,
+                height: 24,
+                animationDuration: const Duration(milliseconds: 2000),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => _declineMatch(match),
-            child: const Text('Decline'),
-          ),
-          ElevatedButton(
-            onPressed: () => _acceptMatch(match),
-            child: const Text('Accept'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _declineMatch(match),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                  ),
+                  child: const Text('Decline'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _acceptMatch(match),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Accept'),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -6,6 +6,7 @@ class MatchResponse {
   final String matchType;
   final DateTime createdAt;
   final bool isActive;
+  final double matchScore;
 
   MatchResponse({
     required this.id,
@@ -13,6 +14,7 @@ class MatchResponse {
     required this.matchType,
     required this.createdAt,
     required this.isActive,
+    required this.matchScore,
   });
 
   factory MatchResponse.fromJson(Map<String, dynamic> json, int currentUserId) {
@@ -35,6 +37,7 @@ class MatchResponse {
       matchType: json['matchType'],
       createdAt: DateTime.parse(json['createdAt']),
       isActive: json['isActive'],
+      matchScore: (json['matchScore'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -45,6 +48,7 @@ class MatchResponse {
       'matchType': matchType,
       'createdAt': createdAt.toIso8601String(),
       'isActive': isActive,
+      'matchScore': matchScore,
     };
   }
 }
