@@ -16,6 +16,9 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:e_learning_app/core/model/user_model.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:e_learning_app/feature/profile/data/user_cubit.dart';
+import 'package:e_learning_app/feature/profile/data/user_state.dart'
+    as profile_state;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -84,17 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // This is an incoming call that was accepted
           debugPrint(
               '[DEBUG] Navigating to call screen for incoming call: ${state.targetUserId}, type: ${state.isVideo ? 'video' : 'voice'}');
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => UnifiedCallPage(
-                targetUserId: state.targetUserId,
-                targetUserName:
-                    state.targetUserId, // Use ID as name for incoming calls
-                isVideoCall: state.isVideo,
-              ),
-            ),
-          );
+          _handleIncomingCallNavigation(state.targetUserId, state.isVideo);
         } else {
           debugPrint(
               '[DEBUG] CallConnected but no valid targetUserId, skipping navigation');
@@ -311,24 +304,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _handleIncomingCall(IncomingCall incomingCall) {
-    _showIncomingCallDialog(incomingCall);
-  }
+  Future<void> _handleIncomingCallNavigation(
+      String targetUserId, bool isVideo) async {
+    try {
+      final userCubit = context.read<UserCubit>();
+      await userCubit.getUserById(int.parse(targetUserId));
 
-  void _handleCallStateChange(CallState callState) {
-    switch (callState) {
-      case CallState.connected:
-        if (_currentMatch != null) {
-          _navigateToCallScreen(_currentMatch!);
-        }
-        break;
-      case CallState.ended:
-      case CallState.rejected:
-      case CallState.failed:
-        // Call ended, no need to update state
-        break;
-      default:
-        break;
+      final userState = userCubit.state;
+      String targetUserName = 'User';
+
+      if (userState is profile_state.UserSuccess && userState.data != null) {
+        targetUserName = userState.data!.username;
+      }
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => UnifiedCallPage(
+            targetUserId: targetUserId,
+            targetUserName: targetUserName,
+            isVideoCall: isVideo,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[DEBUG] Error fetching user info: $e');
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => UnifiedCallPage(
+            targetUserId: targetUserId,
+            targetUserName: 'User $targetUserId',
+            isVideoCall: isVideo,
+          ),
+        ),
+      );
     }
   }
 
@@ -512,7 +522,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final currentUserId = _signalRService.currentUserId;
         final matchedUserId = match.matchedUser.id;
 
-        if (currentUserId != null && matchedUserId != null) {
+        if (currentUserId != null) {
           final shouldInitiateCall = int.parse(currentUserId.toString()) <
               int.parse(matchedUserId.toString());
 
@@ -568,19 +578,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
     }
-  }
-
-  void _navigateToCallScreen(MatchResponse match) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => UnifiedCallPage(
-          targetUserId: match.matchedUser.id.toString(),
-          targetUserName: match.matchedUser.username,
-          isVideoCall: match.matchType == 'video',
-        ),
-      ),
-    );
   }
 
   void _navigateToCallScreenWithType(
