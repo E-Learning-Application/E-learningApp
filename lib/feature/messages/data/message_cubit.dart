@@ -513,10 +513,44 @@ class MessageCubit extends Cubit<MessageState> {
     try {
       final success = await _messageService.markMessageAsRead(messageId);
       if (success) {
+        _updateMessageReadStatus(messageId, true);
         emit(MessageMarkedAsRead(messageId: messageId));
+        await loadUnreadCount();
       }
     } catch (e) {
       log('Error marking message as read: $e');
+    }
+  }
+
+  void _updateMessageReadStatus(int messageId, bool isRead) {
+    for (final entry in _chatMessages.entries) {
+      final messages = entry.value;
+      final messageIndex =
+          messages.indexWhere((msg) => msg.message.id == messageId);
+      if (messageIndex != -1) {
+        final updatedMessages = List<MessageWithStatus>.from(messages);
+        final originalMessage = updatedMessages[messageIndex];
+
+        final updatedMessage = Message(
+          id: originalMessage.message.id,
+          senderId: originalMessage.message.senderId,
+          receiverId: originalMessage.message.receiverId,
+          content: originalMessage.message.content,
+          timestamp: originalMessage.message.timestamp,
+          isRead: isRead,
+          messageType: originalMessage.message.messageType,
+        );
+
+        updatedMessages[messageIndex] = MessageWithStatus(
+          message: updatedMessage,
+          status: originalMessage.status,
+          isDelivered: originalMessage.isDelivered,
+          isRead: isRead,
+          clientTempId: originalMessage.clientTempId,
+        );
+
+        _updateChatMessages(entry.key, updatedMessages);
+      }
     }
   }
 
@@ -524,15 +558,49 @@ class MessageCubit extends Cubit<MessageState> {
     try {
       final success = await _messageService.markAllMessagesAsRead(userId);
       if (success) {
+        _updateAllMessagesReadStatus(userId, true);
         emit(MessageOperationSuccess(
           message: 'All messages marked as read',
           actionType: 'mark_all_read',
         ));
+        await loadUnreadCount();
       } else {
         log('Failed to mark messages as read for user $userId');
       }
     } catch (e) {
       log('Error marking messages as read: $e');
+    }
+  }
+
+  void _updateAllMessagesReadStatus(int userId, bool isRead) {
+    for (final entry in _chatMessages.entries) {
+      if (entry.key == userId) {
+        final messages = entry.value;
+        final updatedMessages = messages.map((msg) {
+          if (msg.message.senderId != (_signalRService.currentUserId ?? 0)) {
+            final updatedMessage = Message(
+              id: msg.message.id,
+              senderId: msg.message.senderId,
+              receiverId: msg.message.receiverId,
+              content: msg.message.content,
+              timestamp: msg.message.timestamp,
+              isRead: isRead,
+              messageType: msg.message.messageType,
+            );
+
+            return MessageWithStatus(
+              message: updatedMessage,
+              status: msg.status,
+              isDelivered: msg.isDelivered,
+              isRead: isRead,
+              clientTempId: msg.clientTempId,
+            );
+          }
+          return msg;
+        }).toList();
+
+        _updateChatMessages(userId, updatedMessages);
+      }
     }
   }
 

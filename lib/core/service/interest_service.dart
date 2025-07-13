@@ -233,12 +233,30 @@ class InterestService {
         // Filter out invalid interests here too
         final validInterests = response.where((item) {
           if (item is Map<String, dynamic>) {
-            final name = item['name'];
-            final id = item['id'];
-
-            return name != null &&
-                name.toString().trim().isNotEmpty &&
-                id != null;
+            if (item.containsKey('interestName') &&
+                item.containsKey('interestId')) {
+              final name = item['interestName'];
+              final id = item['interestId'];
+              return name != null &&
+                  name.toString().trim().isNotEmpty &&
+                  id != null;
+            }
+            // Check if this is a UserInterest object with nested interest
+            else if (item.containsKey('interest') && item['interest'] != null) {
+              final interest = item['interest'] as Map<String, dynamic>;
+              final name = interest['name'];
+              final id = interest['id'];
+              return name != null &&
+                  name.toString().trim().isNotEmpty &&
+                  id != null;
+            } else {
+              // Direct Interest object
+              final name = item['name'];
+              final id = item['id'];
+              return name != null &&
+                  name.toString().trim().isNotEmpty &&
+                  id != null;
+            }
           }
           return false;
         }).toList();
@@ -256,12 +274,32 @@ class InterestService {
           final List<dynamic> interestsList = response['data'];
           final validInterests = interestsList.where((item) {
             if (item is Map<String, dynamic>) {
-              final name = item['name'];
-              final id = item['id'];
-
-              return name != null &&
-                  name.toString().trim().isNotEmpty &&
-                  id != null;
+              // Check if this is a flattened UserInterest object (from backend)
+              if (item.containsKey('interestName') &&
+                  item.containsKey('interestId')) {
+                final name = item['interestName'];
+                final id = item['interestId'];
+                return name != null &&
+                    name.toString().trim().isNotEmpty &&
+                    id != null;
+              }
+              // Check if this is a UserInterest object with nested interest
+              else if (item.containsKey('interest') &&
+                  item['interest'] != null) {
+                final interest = item['interest'] as Map<String, dynamic>;
+                final name = interest['name'];
+                final id = interest['id'];
+                return name != null &&
+                    name.toString().trim().isNotEmpty &&
+                    id != null;
+              } else {
+                // Direct Interest object
+                final name = item['name'];
+                final id = item['id'];
+                return name != null &&
+                    name.toString().trim().isNotEmpty &&
+                    id != null;
+              }
             }
             return false;
           }).toList();

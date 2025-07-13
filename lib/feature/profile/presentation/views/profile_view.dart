@@ -1,9 +1,13 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:e_learning_app/core/model/language_model.dart';
 import 'package:e_learning_app/feature/profile/data/user_cubit.dart';
 import 'package:e_learning_app/feature/profile/data/user_state.dart';
 import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 import 'package:e_learning_app/core/api/end_points.dart';
+import 'package:e_learning_app/core/service/interest_service.dart';
+import 'package:e_learning_app/core/api/dio_consumer.dart';
+import 'package:e_learning_app/feature/language/data/language_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
@@ -25,6 +29,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isEditing = false;
   File? _selectedImage;
   User? _currentUser;
+  List<Interest> _userInterests = [];
+  bool _isLoadingInterests = false;
+  bool _hasLoadedInterests = false;
 
   @override
   void initState() {
@@ -35,10 +42,129 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _loadUserData() {
+    // Reset interests when loading different user data
+    setState(() {
+      _hasLoadedInterests = false;
+      _userInterests = [];
+    });
+
     if (widget.userId != null) {
       context.read<UserCubit>().getUserById(widget.userId!);
     } else {
       context.read<UserCubit>().getCurrentUserProfile();
+    }
+  }
+
+  // Test method to manually trigger interests loading
+  void _testLoadInterests() {
+    final currentUser = context.read<AuthCubit>().currentUser;
+    if (currentUser != null) {
+      // Reset the flag to allow reloading
+      setState(() {
+        _hasLoadedInterests = false;
+      });
+      _loadUserInterests(currentUser.userId);
+    }
+  }
+
+  Future<void> _loadUserInterests(int userId) async {
+    // Prevent multiple calls for the same user
+    if (_hasLoadedInterests) {
+      print('DEBUG: Interests already loaded, skipping');
+      return;
+    }
+
+    try {
+      setState(() {
+        _isLoadingInterests = true;
+      });
+
+      final authCubit = context.read<AuthCubit>();
+      final token = authCubit.accessToken;
+      final currentUser = authCubit.currentUser;
+
+      if (token == null) {
+        print('DEBUG: No access token available for loading interests');
+        return;
+      }
+
+      // Only load interests if viewing current user's profile
+      // or if we have admin access (for future implementation)
+      if (currentUser?.userId != userId) {
+        print('DEBUG: Can only view interests for current user');
+        setState(() {
+          _userInterests = [];
+          _hasLoadedInterests = true;
+        });
+        return;
+      }
+
+      final dioConsumer = DioConsumer(dio: Dio());
+      final interestService = InterestService(dioConsumer: dioConsumer);
+
+      // Use the current user's interests endpoint since backend doesn't support user ID parameter
+      final response = await interestService.getUserInterests(
+        accessToken: token,
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic> interestsData = response.data;
+        print('DEBUG: Raw interests data: $interestsData');
+
+        // Handle the flattened UserInterest structure from backend
+        final interests = interestsData
+            .map((item) {
+              print('DEBUG: Processing interest item: $item');
+              if (item is Map<String, dynamic>) {
+                // Check if this is a flattened UserInterest object (from backend)
+                if (item.containsKey('interestName') &&
+                    item.containsKey('interestId')) {
+                  print('DEBUG: Found flattened UserInterest object: $item');
+                  return Interest(
+                    id: item['interestId'] ?? 0,
+                    name: item['interestName'] ?? '',
+                    description: null,
+                  );
+                }
+                // Check if this is a UserInterest object with nested interest
+                else if (item.containsKey('interest') &&
+                    item['interest'] != null) {
+                  print(
+                      'DEBUG: Found UserInterest with nested interest: ${item['interest']}');
+                  return Interest.fromJson(item['interest']);
+                } else {
+                  // Direct Interest object
+                  print('DEBUG: Found direct Interest object: $item');
+                  return Interest.fromJson(item);
+                }
+              }
+              return null;
+            })
+            .where((interest) => interest != null)
+            .cast<Interest>()
+            .toList();
+
+        print(
+            'DEBUG: Parsed interests: ${interests.map((i) => i.name).toList()}');
+        setState(() {
+          _userInterests = interests;
+          _hasLoadedInterests = true;
+        });
+      } else {
+        print('DEBUG: Failed to load user interests: ${response.message}');
+        setState(() {
+          _hasLoadedInterests = true;
+        });
+      }
+    } catch (e) {
+      print('DEBUG: Error loading user interests: $e');
+      setState(() {
+        _hasLoadedInterests = true;
+      });
+    } finally {
+      setState(() {
+        _isLoadingInterests = false;
+      });
     }
   }
 
@@ -373,6 +499,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _usernameController.text = user.username;
                   _bioController.text = user.bio ?? '';
                 }
+
+                // Load user interests when user data is available
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _loadUserInterests(user!.id);
+                });
               }
 
               return SingleChildScrollView(
@@ -387,6 +518,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 24),
                       if (user?.languagePreferences != null)
                         _buildLanguagePreferences(user!.languagePreferences!),
+                      const SizedBox(height: 24),
+                      _buildUserInterests(),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -682,6 +815,96 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ))
             .toList(),
+      ],
+    );
+  }
+
+  Widget _buildUserInterests() {
+    final currentUser = context.read<AuthCubit>().currentUser;
+    final isCurrentUser =
+        currentUser?.userId == widget.userId || widget.userId == null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'User Interests',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (_isLoadingInterests)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (!isCurrentUser)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue[200]!),
+            ),
+            child: const Center(
+              child: Text(
+                'Interests are only visible to the profile owner',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          )
+        else if (_userInterests.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey[300]!),
+            ),
+            child: const Center(
+              child: Text(
+                'No interests found',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          )
+        else
+          ..._userInterests
+              .map((interest) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.favorite,
+                          color: Colors.green,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            interest.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
       ],
     );
   }

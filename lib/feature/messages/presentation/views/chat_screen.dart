@@ -17,6 +17,7 @@ class ChatMessage {
   final DateTime timestamp;
   final MessageType type;
   final msg_state.MessageStatus status;
+  final bool isRead; // Added for marking messages as read
 
   ChatMessage({
     required this.id,
@@ -25,6 +26,7 @@ class ChatMessage {
     required this.timestamp,
     this.type = MessageType.text,
     this.status = msg_state.MessageStatus.sent,
+    this.isRead = false, // Default to false
   });
 
   factory ChatMessage.fromMessageWithStatus(
@@ -36,6 +38,7 @@ class ChatMessage {
       timestamp: messageWithStatus.message.timestamp,
       status: messageWithStatus.status,
       type: MessageType.text,
+      isRead: messageWithStatus.message.isRead, // Use the actual isRead status
     );
   }
 
@@ -46,6 +49,27 @@ class ChatMessage {
       isCurrentUser: message.senderId == currentUserId,
       timestamp: message.timestamp,
       type: MessageType.text,
+      isRead: message.isRead, // Use the actual isRead status
+    );
+  }
+
+  ChatMessage copyWith({
+    String? id,
+    String? content,
+    bool? isCurrentUser,
+    DateTime? timestamp,
+    MessageType? type,
+    msg_state.MessageStatus? status,
+    bool? isRead,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      content: content ?? this.content,
+      isCurrentUser: isCurrentUser ?? this.isCurrentUser,
+      timestamp: timestamp ?? this.timestamp,
+      type: type ?? this.type,
+      status: status ?? this.status,
+      isRead: isRead ?? this.isRead,
     );
   }
 }
@@ -79,6 +103,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _messageStreamSubscription;
   bool _isLoading = true;
   int? _currentUserId;
+  Set<int> _readMessageIds =
+      {}; // Track which messages have been marked as read
 
   @override
   void initState() {
@@ -109,12 +135,36 @@ class _ChatScreenState extends State<ChatScreen> {
             .toList();
         _isLoading = false;
       });
+
+      // Mark unread messages as read when they are displayed
+      _markUnreadMessagesAsRead(messagesWithStatus);
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollToBottom();
         }
       });
     });
+  }
+
+  void _markUnreadMessagesAsRead(List<msg_state.MessageWithStatus> messages) {
+    final messageCubit = context.read<MessageCubit>();
+    final currentUserId = _currentUserId ?? 0;
+
+    for (final messageWithStatus in messages) {
+      final message = messageWithStatus.message;
+
+      // Only mark messages as read if:
+      // 1. The message is not from the current user
+      // 2. The message is not already read
+      // 3. The message hasn't been marked as read in this session
+      if (message.senderId != currentUserId &&
+          !message.isRead &&
+          !_readMessageIds.contains(message.id)) {
+        messageCubit.markMessageAsRead(message.id);
+        _readMessageIds.add(message.id);
+      }
+    }
   }
 
   void _setupTypingListener() {
@@ -235,11 +285,24 @@ class _ChatScreenState extends State<ChatScreen> {
           );
 
     return GestureDetector(
+      onTap: () {
+        // Mark message as read when tapped (for received messages)
+        if (!message.isCurrentUser && !message.isRead) {
+          _markMessageAsRead(message.id);
+        }
+      },
       onLongPress: () {
         _showMessageOptions(message);
       },
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: BoxDecoration(
+          // Add subtle border for unread messages
+          border: (!message.isCurrentUser && !message.isRead)
+              ? Border.all(color: Colors.blue.withOpacity(0.3), width: 1)
+              : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Row(
           mainAxisAlignment:
               isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -323,13 +386,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     const SizedBox(height: 2),
                     Padding(
                       padding: const EdgeInsets.only(left: 8),
-                      child: Text(
-                        _formatTime(message.timestamp),
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
-                      ),
+                      child: _buildReadIndicator(message),
                     ),
                   ],
                 ],
@@ -370,6 +427,44 @@ class _ChatScreenState extends State<ChatScreen> {
         return const Icon(Icons.error, size: 12, color: Colors.red);
       default:
         return const SizedBox();
+    }
+  }
+
+  Widget _buildReadIndicator(ChatMessage message) {
+    if (message.isCurrentUser) {
+      // For sent messages, show read status
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _formatTime(message.timestamp),
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 10,
+            ),
+          ),
+          const SizedBox(width: 4),
+          _buildMessageStatusIcon(message.status),
+        ],
+      );
+    } else {
+      // For received messages, show read indicator if message is read
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _formatTime(message.timestamp),
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 10,
+            ),
+          ),
+          if (message.isRead) ...[
+            const SizedBox(width: 4),
+            const Icon(Icons.done_all, size: 12, color: Colors.blue),
+          ],
+        ],
+      );
     }
   }
 
@@ -604,6 +699,18 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _markMessageAsRead(String messageId) {
+    try {
+      final messageCubit = context.read<MessageCubit>();
+      final id = int.tryParse(messageId);
+      if (id != null) {
+        messageCubit.markMessageAsRead(id);
+      }
+    } catch (e) {
+      print('Error marking message as read: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -662,9 +769,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 value: 'end',
                 child: Row(
                   children: [
-                    Icon(Icons.call_end, color: Colors.red),
+                    Icon(Icons.close),
                     SizedBox(width: 8),
-                    Text('End Match', style: TextStyle(color: Colors.red)),
+                    Text('End Match'),
                   ],
                 ),
               ),
@@ -688,6 +795,25 @@ class _ChatScreenState extends State<ChatScreen> {
                 backgroundColor: Colors.red,
               ),
             );
+          } else if (state is msg_state.MessageMarkedAsRead) {
+            // Update the message status in the UI when marked as read
+            setState(() {
+              for (int i = 0; i < _messages.length; i++) {
+                if (_messages[i].id == state.messageId.toString()) {
+                  _messages[i] = _messages[i].copyWith(isRead: true);
+                  break;
+                }
+              }
+            });
+          } else if (state is msg_state.MessageOperationSuccess) {
+            if (state.actionType == 'mark_all_read') {
+              // Update all messages to show as read
+              setState(() {
+                for (int i = 0; i < _messages.length; i++) {
+                  _messages[i] = _messages[i].copyWith(isRead: true);
+                }
+              });
+            }
           }
         },
         child: Column(
@@ -728,23 +854,21 @@ class _ChatScreenState extends State<ChatScreen> {
                       decoration: const InputDecoration(
                         hintText: 'Type a message...',
                         border: InputBorder.none,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
-                      minLines: 1,
-                      maxLines: 5,
-                      onSubmitted: (_) => _sendMessage(),
+                      maxLines: null,
+                      textCapitalization: TextCapitalization.sentences,
                     ),
                   ),
+                  const SizedBox(width: 8),
                   IconButton(
+                    onPressed: _isSendingMessage ? null : _sendMessage,
                     icon: _isSendingMessage
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.send, color: Colors.blueAccent),
-                    onPressed: _isSendingMessage ? null : _sendMessage,
+                        : const Icon(Icons.send),
                   ),
                 ],
               ),
