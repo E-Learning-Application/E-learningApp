@@ -9,7 +9,7 @@ import '../../../../core/service/matching_service.dart';
 import '../../../../core/service/signalr_service.dart' as signalr;
 import '../../../../core/model/message_model.dart' hide MessageStatus;
 import '../../../../feature/messages/data/message_state.dart' as msg_state;
-import '../../../../core/service/auth_service.dart';
+import 'package:e_learning_app/feature/Auth/data/auth_cubit.dart';
 
 class ChatMessage {
   final String id;
@@ -95,16 +95,49 @@ class _ChatScreenState extends State<ChatScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   bool _isSendingMessage = false;
   bool _isUploadingImage = false;
-  final List<ChatMessage> _messages = [];
+  List<ChatMessage> _messages = [];
   Timer? _typingTimer;
   bool _isTyping = false;
+  StreamSubscription<List<msg_state.MessageWithStatus>>?
+      _messageStreamSubscription;
+  bool _isLoading = true;
+  int? _currentUserId;
 
   @override
   void initState() {
     super.initState();
+    _loadCurrentUserId();
     _loadChatHistory();
     _setupTypingListener();
     _markMessagesAsRead();
+    _setupMessageStream();
+  }
+
+  void _loadCurrentUserId() {
+    final authCubit = context.read<AuthCubit>();
+    setState(() {
+      _currentUserId = authCubit.currentUser?.userId;
+    });
+  }
+
+  void _setupMessageStream() {
+    final messageCubit = context.read<MessageCubit>();
+    _messageStreamSubscription = messageCubit
+        .getChatStream(widget.match.matchedUser.id)
+        .listen((messagesWithStatus) {
+      setState(() {
+        _messages = messagesWithStatus
+            .map((msg) =>
+                ChatMessage.fromMessageWithStatus(msg, _currentUserId ?? 0))
+            .toList();
+        _isLoading = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollToBottom();
+        }
+      });
+    });
   }
 
   void _setupTypingListener() {
@@ -142,7 +175,13 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _typingTimer?.cancel();
+    _messageStreamSubscription?.cancel();
     _stopTyping();
+
+    // Clean up the chat stream
+    final messageCubit = context.read<MessageCubit>();
+    messageCubit.cleanupChatStream(widget.match.matchedUser.id);
+
     super.dispose();
   }
 
@@ -179,8 +218,6 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _isSendingMessage = false;
     });
-
-    _scrollToBottom();
   }
 
   void _sendImage(File imageFile) async {
@@ -222,7 +259,6 @@ class _ChatScreenState extends State<ChatScreen> {
         content: imageUrl,
       );
 
-      // Remove temp message and let the real message come through the cubit
       setState(() {
         _messages.removeWhere((msg) => msg.id == tempMessage.id);
       });
@@ -250,7 +286,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (pickedFile != null) {
-        final File imageFile = File(pickedFile.path);
+        final imageFile = File(pickedFile.path);
         _sendImage(imageFile);
       }
     } catch (e) {
@@ -323,15 +359,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -591,15 +623,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Widget _buildLoadingIndicator() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: CircularProgressIndicator(),
-      ),
-    );
-  }
-
   String _formatMessageTime(DateTime timestamp) {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
@@ -673,57 +696,6 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
     }
-  }
-
-  void _updateMessagesFromState(msg_state.MessageState state) {
-    final authService = AuthService(dioConsumer: context.read());
-    authService.getCurrentUser().then((currentUser) {
-      final currentUserId =
-          currentUser?.userId ?? widget.signalRService.currentUserId ?? 0;
-
-      print('ChatScreen: Current user ID: $currentUserId');
-      print('ChatScreen: Matched user ID: ${widget.match.matchedUser.id}');
-
-      if (state is msg_state.ChatLoaded &&
-          state.otherUserId == widget.match.matchedUser.id) {
-        print('ChatScreen: Updating messages from ChatLoaded state');
-        print('ChatScreen: Number of messages: ${state.messages.length}');
-
-        setState(() {
-          _messages.clear();
-          _messages.addAll(
-            state.messages.map((msg) {
-              final chatMessage = ChatMessage.fromMessageWithStatus(
-                msg,
-                currentUserId,
-              );
-              print(
-                  'ChatScreen: Message ${chatMessage.id} - isCurrentUser: ${chatMessage.isCurrentUser}, content: "${chatMessage.content}"');
-              return chatMessage;
-            }),
-          );
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-      } else if (state is msg_state.NewMessageReceived) {
-        final message = state.message;
-        print('ChatScreen: Received new message from user ${message.senderId}');
-        print('ChatScreen: Message content: "${message.content}"');
-
-        if (message.senderId == widget.match.matchedUser.id ||
-            message.receiverId == widget.match.matchedUser.id) {
-          setState(() {
-            _messages.add(ChatMessage.fromMessage(message, currentUserId));
-            _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-          });
-          WidgetsBinding.instance
-              .addPostFrameCallback((_) => _scrollToBottom());
-        }
-      } else if (state is msg_state.MessageSent) {
-        print('ChatScreen: Message sent successfully');
-      } else if (state is msg_state.MessageSendFailed) {
-        print('ChatScreen: Message send failed: ${state.errorMessage}');
-      }
-    });
   }
 
   Widget _buildTypingIndicator() {
@@ -963,8 +935,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: BlocListener<MessageCubit, msg_state.MessageState>(
         listener: (context, state) {
-          _updateMessagesFromState(state);
-
           if (state is msg_state.MessageError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -984,37 +954,29 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           children: [
             Expanded(
-              child: BlocBuilder<MessageCubit, msg_state.MessageState>(
-                builder: (context, state) {
-                  if (state is msg_state.MessageLoading) {
-                    return _buildLoadingIndicator();
-                  }
-
-                  if (_messages.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'No messages yet. Start the conversation!',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _messages.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No messages yet. Start the conversation!',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          itemCount: _messages.length + 1,
+                          itemBuilder: (context, index) {
+                            if (index == _messages.length) {
+                              return _buildTypingIndicator();
+                            }
+                            final message = _messages[index];
+                            return _buildMessageBubble(message);
+                          },
                         ),
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    controller: _scrollController,
-                    itemCount: _messages.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == _messages.length) {
-                        return _buildTypingIndicator();
-                      }
-                      final message = _messages[index];
-                      return _buildMessageBubble(message);
-                    },
-                  );
-                },
-              ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -1022,9 +984,16 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.image, color: Colors.blueAccent),
-                    onPressed:
-                        _isUploadingImage ? null : _showImagePickerOptions,
+                    icon: _isUploadingImage && !_isSendingMessage
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.image, color: Colors.blueAccent),
+                    onPressed: _isUploadingImage || _isSendingMessage
+                        ? null
+                        : _showImagePickerOptions,
                   ),
                   Expanded(
                     child: TextField(
@@ -1041,7 +1010,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: _isSendingMessage || _isUploadingImage
+                    icon: _isSendingMessage && !_isUploadingImage
                         ? const SizedBox(
                             width: 20,
                             height: 20,

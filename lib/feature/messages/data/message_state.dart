@@ -273,12 +273,14 @@ class MessageWithStatus {
   final MessageStatus status;
   final bool isDelivered;
   final bool isRead;
+  final String? clientTempId;
 
   const MessageWithStatus({
     required this.message,
     required this.status,
     required this.isDelivered,
     required this.isRead,
+    this.clientTempId,
   });
 }
 

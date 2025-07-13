@@ -6,6 +6,7 @@ import 'package:e_learning_app/core/service/message_service.dart';
 import 'package:e_learning_app/core/service/signalr_service.dart' as signalr;
 import 'dart:async';
 import 'dart:developer';
+import 'package:flutter/widgets.dart';
 
 class MessageCubit extends Cubit<MessageState> {
   final MessageService _messageService;
@@ -20,6 +21,8 @@ class MessageCubit extends Cubit<MessageState> {
 
   StreamSubscription? _messageSubscription;
   StreamSubscription? _typingSubscription;
+  final Map<int, StreamController<List<MessageWithStatus>>> _chatStreams = {};
+  final Map<int, List<MessageWithStatus>> _chatMessages = {};
 
   MessageCubit({
     required MessageService messageService,
@@ -38,6 +41,20 @@ class MessageCubit extends Cubit<MessageState> {
     _typingSubscription = _signalRService.onUserTyping.listen((typingData) {
       _handleTypingIndicator(typingData);
     });
+  }
+
+  Stream<List<MessageWithStatus>> getChatStream(int withUserId) {
+    if (!_chatStreams.containsKey(withUserId)) {
+      _chatStreams[withUserId] =
+          StreamController<List<MessageWithStatus>>.broadcast();
+      _chatMessages[withUserId] = [];
+    }
+    return _chatStreams[withUserId]!.stream;
+  }
+
+  void _updateChatMessages(int withUserId, List<MessageWithStatus> messages) {
+    _chatMessages[withUserId] = messages;
+    _chatStreams[withUserId]?.add(messages);
   }
 
   Future<void> loadChatList() async {
@@ -211,6 +228,11 @@ class MessageCubit extends Cubit<MessageState> {
               ))
           .toList();
 
+      messagesWithStatus
+          .sort((a, b) => a.message.timestamp.compareTo(b.message.timestamp));
+
+      _updateChatMessages(withUserId, messagesWithStatus);
+
       if (messages.isEmpty) {
         emit(ChatEmpty(
           otherUserId: withUserId,
@@ -230,16 +252,17 @@ class MessageCubit extends Cubit<MessageState> {
     }
   }
 
-  // Send message
   Future<void> sendMessage({
     required int receiverId,
     required String content,
   }) async {
     try {
       await stopTyping(receiverId);
+      final clientTempId = UniqueKey().toString();
+      final tempId = DateTime.now().millisecondsSinceEpoch;
       final tempMessage = MessageWithStatus(
         message: Message(
-          id: DateTime.now().millisecondsSinceEpoch, // Temporary ID
+          id: tempId,
           senderId: _signalRService.currentUserId ?? 0,
           receiverId: receiverId,
           content: content,
@@ -249,42 +272,51 @@ class MessageCubit extends Cubit<MessageState> {
         status: MessageStatus.sending,
         isDelivered: false,
         isRead: false,
+        clientTempId: clientTempId,
       );
-
-      emit(MessageSending(message: tempMessage));
-
+      final currentMessages = _chatMessages[receiverId] ?? [];
+      final updatedMessages = List<MessageWithStatus>.from(currentMessages);
+      updatedMessages.add(tempMessage);
+      updatedMessages
+          .sort((a, b) => a.message.timestamp.compareTo(b.message.timestamp));
+      _updateChatMessages(receiverId, updatedMessages);
       final signalRSuccess = await _signalRService.sendMessage(
         receiverId: receiverId,
         content: content,
       );
-
       if (signalRSuccess) {
-        if (state is ChatLoaded) {
-          final chatState = state as ChatLoaded;
-          final updatedMessages =
-              List<MessageWithStatus>.from(chatState.messages);
-          updatedMessages
-              .removeWhere((msg) => msg.message.id == tempMessage.message.id);
-          updatedMessages.add(MessageWithStatus(
-            message: tempMessage.message,
-            status: MessageStatus.sent,
-            isDelivered: true,
-            isRead: false,
-          ));
-
-          updatedMessages.sort(
-              (a, b) => a.message.timestamp.compareTo(b.message.timestamp));
-
-          emit(ChatLoaded(
-            messages: updatedMessages,
-            otherUserId: chatState.otherUserId,
-            otherUserName: chatState.otherUserName,
-            isOtherUserOnline: chatState.isOtherUserOnline,
-          ));
-        }
-
+        final sentMessage = MessageWithStatus(
+          message: tempMessage.message,
+          status: MessageStatus.sent,
+          isDelivered: true,
+          isRead: false,
+          clientTempId: clientTempId,
+        );
+        final messagesToUpdate = _chatMessages[receiverId] ?? [];
+        final updatedMessagesList = messagesToUpdate.map((msg) {
+          if (msg.clientTempId == clientTempId) {
+            return sentMessage;
+          }
+          return msg;
+        }).toList();
+        _updateChatMessages(receiverId, updatedMessagesList);
         emit(MessageSent(message: tempMessage.message));
       } else {
+        final failedMessage = MessageWithStatus(
+          message: tempMessage.message,
+          status: MessageStatus.failed,
+          isDelivered: false,
+          isRead: false,
+          clientTempId: clientTempId,
+        );
+        final messagesToUpdate = _chatMessages[receiverId] ?? [];
+        final updatedMessagesList = messagesToUpdate.map((msg) {
+          if (msg.clientTempId == clientTempId) {
+            return failedMessage;
+          }
+          return msg;
+        }).toList();
+        _updateChatMessages(receiverId, updatedMessagesList);
         emit(MessageSendFailed(
           content: content,
           errorMessage: 'Failed to send message via SignalR',
@@ -374,21 +406,48 @@ class MessageCubit extends Cubit<MessageState> {
 
       emit(NewMessageReceived(message: message));
 
+      final currentUserId = _signalRService.currentUserId ?? 0;
+      final chatUserId = message.senderId == currentUserId
+          ? message.receiverId
+          : message.senderId;
+
+      final currentMessages = _chatMessages[chatUserId] ?? [];
+      final newMessageWithStatus = MessageWithStatus(
+        message: message,
+        status: message.senderId == currentUserId
+            ? MessageStatus.sent
+            : MessageStatus.received,
+        isDelivered: true,
+        isRead: false,
+      );
+
+      final updatedMessages = List<MessageWithStatus>.from(currentMessages);
+      final optimisticIndex = updatedMessages.indexWhere((msg) =>
+          msg.clientTempId != null &&
+          msg.message.content == message.content &&
+          msg.message.senderId == message.senderId &&
+          msg.message.timestamp.difference(message.timestamp).inSeconds.abs() <
+              5);
+      if (optimisticIndex != -1) {
+        // Replace the optimistic message with the real one
+        updatedMessages[optimisticIndex] = newMessageWithStatus;
+      } else {
+        // Check if message already exists (to avoid duplicates)
+        final existingIndex =
+            updatedMessages.indexWhere((msg) => msg.message.id == message.id);
+        if (existingIndex == -1) {
+          updatedMessages.add(newMessageWithStatus);
+        } else {
+          updatedMessages[existingIndex] = newMessageWithStatus;
+        }
+      }
+      updatedMessages
+          .sort((a, b) => a.message.timestamp.compareTo(b.message.timestamp));
+      _updateChatMessages(chatUserId, updatedMessages);
+
       if (state is ChatLoaded) {
         final chatState = state as ChatLoaded;
-        if (chatState.otherUserId == message.senderId) {
-          final updatedMessages =
-              List<MessageWithStatus>.from(chatState.messages);
-          updatedMessages.add(MessageWithStatus(
-            message: message,
-            status: MessageStatus.received,
-            isDelivered: true,
-            isRead: false,
-          ));
-
-          updatedMessages.sort(
-              (a, b) => a.message.timestamp.compareTo(b.message.timestamp));
-
+        if (chatState.otherUserId == chatUserId) {
           emit(ChatLoaded(
             messages: updatedMessages,
             otherUserId: chatState.otherUserId,
@@ -531,11 +590,24 @@ class MessageCubit extends Cubit<MessageState> {
     _lastTypingTime.clear();
   }
 
+  void cleanupChatStream(int withUserId) {
+    _chatStreams[withUserId]?.close();
+    _chatStreams.remove(withUserId);
+    _chatMessages.remove(withUserId);
+  }
+
   @override
   Future<void> close() {
     _messageSubscription?.cancel();
     _typingSubscription?.cancel();
     cleanupAllTypingIndicators();
+
+    for (final stream in _chatStreams.values) {
+      stream.close();
+    }
+    _chatStreams.clear();
+    _chatMessages.clear();
+
     return super.close();
   }
 }
